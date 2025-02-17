@@ -61,8 +61,8 @@ class DataGenerator:
     def generate(self, file_path=None):
         columns_operations = (["Job_Name", "Job_Index", "Arrival_Date", "Operation_Name", "Operation_Index", "Order"]
                               + ["Machine-%d" % i for i in range(self.num_machines)])
-        columns_locations = ["Location_Name", "Location_Index", "Location_Type", "X_Coordinate", "Y_Coordinate"]
-        columns_resources = ["Crane_Name", "Crane_Index", "X_Velocity", "Y_Velocity",
+        columns_locations = ["Name", "Global_Index", "Local_Index", "Category", "X_Coordinate", "Y_Coordinate"]
+        columns_resources = ["Name", "Index", "X_Velocity", "Y_Velocity",
                              "Initial_X_Coordinate", "Initial_Y_Coordinate"]
 
         df_operations = []
@@ -99,33 +99,33 @@ class DataGenerator:
                 df_operations.append(row)
 
         num_locations = int(self.num_rows * self.num_bays)
-        count = {0: 0, 1: 0, 2: 0, 3: 0}
+        global_index = 0
+        local_index = {0: 0, 1: 0, 2: 0, 3: 0}
         for i in range(num_locations):
-            location_index = i
-
             row_index = i % self.num_rows
             bay_index = i // self.num_rows
 
-            location_type = self.division[bay_index]
-            if location_type == 0:
-                location_name = "Input-%d" % count[location_type]
-            elif location_type == 1:
-                location_name = "Machine-%d" % count[location_type]
-            elif location_type == 2:
-                location_name = "Buffer-%d" % count[location_type]
+            category = self.division[bay_index]
+            if category == 0:
+                name = "InputPoint-%d" % local_index[category]
+            elif category == 1:
+                name = "Machine-%d" % local_index[category]
+            elif category == 2:
+                name = "Buffer-%d" % local_index[category]
             else:
-                location_name = "Output-%d" % count[location_type]
-
-            count[location_type] += 1
+                name = "OutputPoint-%d" % local_index[category]
 
             x_coordinate = self.x_spacing * bay_index
             y_coordinate = self.y_spacing * row_index
 
-            df_locations.append([location_name, location_index, location_type, x_coordinate, y_coordinate])
+            df_locations.append([name, global_index, local_index[category], category, x_coordinate, y_coordinate])
+
+            global_index += 1
+            local_index[category] += 1
 
         for i in range(self.num_cranes):
-            crane_name = "Crane-%d" % i
-            crane_index = i
+            name = "Crane-%d" % i
+            index = i
 
             x_velocity = self.x_velocity
             y_velocity = self.y_velocity
@@ -137,8 +137,7 @@ class DataGenerator:
 
             initial_y_coordinate = 0
 
-            df_resources.append([crane_name, crane_index, x_velocity, y_velocity,
-                                 initial_x_coordinate, initial_y_coordinate])
+            df_resources.append([name, index, x_velocity, y_velocity, initial_x_coordinate, initial_y_coordinate])
 
         df_operations = pd.DataFrame(df_operations, columns=columns_operations)
         df_locations = pd.DataFrame(df_locations, columns=columns_locations)
