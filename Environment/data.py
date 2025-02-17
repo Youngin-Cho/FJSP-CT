@@ -61,7 +61,7 @@ class DataGenerator:
     def generate(self, file_path=None):
         columns_operations = (["Job_Name", "Job_Index", "Arrival_Date", "Operation_Name", "Operation_Index", "Order"]
                               + ["Machine-%d" % i for i in range(self.num_machines)])
-        columns_locations = ["Location_Name", "Location_Index", "X_Coordinate", "Y_Coordinate"]
+        columns_locations = ["Location_Name", "Location_Index", "Location_Type", "X_Coordinate", "Y_Coordinate"]
         columns_resources = ["Crane_Name", "Crane_Index", "X_Velocity", "Y_Velocity",
                              "Initial_X_Coordinate", "Initial_Y_Coordinate"]
 
@@ -99,29 +99,29 @@ class DataGenerator:
                 df_operations.append(row)
 
         num_locations = int(self.num_rows * self.num_bays)
-        name_mapping = {0: 0, 1: 0, 2: 0, 3: 0}
+        count = {0: 0, 1: 0, 2: 0, 3: 0}
         for i in range(num_locations):
             location_index = i
 
             row_index = i % self.num_rows
             bay_index = i // self.num_rows
 
-            category = self.division[bay_index]
-            if category == 0:
-                location_name = "Input-%d" % name_mapping[category]
-            elif category == 1:
-                location_name = "Machine-%d" % name_mapping[category]
-            elif category == 2:
-                location_name = "Buffer-%d" % name_mapping[category]
+            location_type = self.division[bay_index]
+            if location_type == 0:
+                location_name = "Input-%d" % count[location_type]
+            elif location_type == 1:
+                location_name = "Machine-%d" % count[location_type]
+            elif location_type == 2:
+                location_name = "Buffer-%d" % count[location_type]
             else:
-                location_name = "Output-%d" % name_mapping[category]
+                location_name = "Output-%d" % count[location_type]
 
-            name_mapping[category] += 1
+            count[location_type] += 1
 
             x_coordinate = self.x_spacing * bay_index
             y_coordinate = self.y_spacing * row_index
 
-            df_locations.append([location_name, location_index, x_coordinate, y_coordinate])
+            df_locations.append([location_name, location_index, location_type, x_coordinate, y_coordinate])
 
         for i in range(self.num_cranes):
             crane_name = "Crane-%d" % i
