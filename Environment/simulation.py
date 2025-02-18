@@ -3,18 +3,17 @@ import pandas as pd
 
 
 class Crane:
-    def __init__(self, env, name, id, model, monitor,
-                 safety_margin, x_velocity, y_velocity, max_x, max_y, initial_coord):
+    def __init__(self, env, name, id, safety_margin, x_velocity, y_velocity, initial_coord, locations, monitor):
         self.env = env
         self.name = name
         self.id = id
-        self.model = model
+        self.locations = locations
         self.monitor = monitor
         self.safety_margin = safety_margin
         self.x_velocity = x_velocity
         self.y_velocity = y_velocity
-        self.max_x = max_x
-        self.max_y = max_y
+        # self.max_x = max_x
+        # self.max_y = max_y
 
         self.opposite = None
         self.queue = []
@@ -52,10 +51,44 @@ class Crane:
         travel_time = max(x_travel_time, y_travel_time)
         return travel_time
 
+    def update_location(self, time, on_location=False):
+        xcoord = self.current_coord[0]
+        ycoord = self.current_coord[1]
+        time_elapsed = time - self.update_time
+
+        if time_elapsed > 0.0 and self.target_coord[0] != -1.0:
+            if self.safety_coord[0] != -1.0:
+                x_direction = np.sign(self.safety_coord[0] - xcoord)
+                # x_limit = self.safety_coord[0]
+            else:
+                x_direction = np.sign(self.target_coord[0] - xcoord)
+                # x_limit = self.target_coord[0]
+
+            y_direction = np.sign(self.target_coord[1] - ycoord)
+            # y_limit = self.target_coord[1]
+
+            xcoord = xcoord + time_elapsed * self.x_velocity * x_direction
+            ycoord = ycoord + time_elapsed * self.y_velocity * y_direction
+
+            # if x_direction == 1:
+            #     x_coord = np.clip(xcoord, a_min=1, a_max=x_limit)
+            # else:
+            #     x_coord = np.clip(xcoord, a_min=x_limit, a_max=self.max_x)
+            #
+            # if y_direction == 1:
+            #     y_coord = np.clip(ycoord, a_min=1, a_max=y_limit)
+            # else:
+            #     y_coord = np.clip(ycoord, a_min=y_limit, a_max=self.max_y)
+
+        self.update_time = time
+        self.current_coord = (xcoord, ycoord)
+
+        if on_location:
+            self.current_coord = (int(xcoord), int(ycoord))
+
     def _initialize(self):
-        for name, process in self.model.items():
-            if name != "Source" or name != "Sink":
-                self.location_mapping[process.coord] = process
+        for name, location in self.locations.items():
+            self.location_mapping[location.coord] = location
 
     def _run(self):
         self._initialize()
@@ -89,7 +122,7 @@ class Crane:
                 self.idle = False
 
                 location_name, job_id = self.queue.pop(0)
-                location = self.model[location_name]
+                location = self.locations[location_name]
 
                 self.status = "loading"
                 self.working_start = self.env.now
@@ -98,16 +131,16 @@ class Crane:
                 self.to_location = self.location_mapping[self.target_coord].name
 
                 yield self.env.process(self._moving(location.coord))
-                self.job = self.model[self.to_location].get_job()
+                self.job = self.locations[self.to_location].get_job()
 
                 self.status = "unloading"
                 self.working_start = self.env.now
-                self.target_coord = self.model[self.job.next_location].coord
+                self.target_coord = self.locations[self.job.next_location].coord
                 self.from_location = self.location_mapping[self.current_coord].name
                 self.to_location = self.location_mapping[self.target_coord].name
 
                 yield self.env.process(self._moving(location.coord))
-                self.model[self.to_location].put(self.job)
+                self.locations[self.to_location].put(self.job)
 
                 self.target_coord = (-1.0, -1.0)
                 self.from_location = None
@@ -241,41 +274,6 @@ class Crane:
 
         return avoidance, safety_xcoord
 
-    def update_location(self, time, on_location=False):
-        xcoord = self.current_coord[0]
-        ycoord = self.current_coord[1]
-        time_elapsed = time - self.update_time
-
-        if time_elapsed > 0.0 and self.target_coord[0] != -1.0:
-            if self.safety_coord[0] != -1.0:
-                x_direction = np.sign(self.safety_coord[0] - xcoord)
-                # x_limit = self.safety_coord[0]
-            else:
-                x_direction = np.sign(self.target_coord[0] - xcoord)
-                # x_limit = self.target_coord[0]
-
-            y_direction = np.sign(self.target_coord[1] - ycoord)
-            # y_limit = self.target_coord[1]
-
-            xcoord = xcoord + time_elapsed * self.x_velocity * x_direction
-            ycoord = ycoord + time_elapsed * self.y_velocity * y_direction
-
-            # if x_direction == 1:
-            #     x_coord = np.clip(xcoord, a_min=1, a_max=x_limit)
-            # else:
-            #     x_coord = np.clip(xcoord, a_min=x_limit, a_max=self.max_x)
-            #
-            # if y_direction == 1:
-            #     y_coord = np.clip(ycoord, a_min=1, a_max=y_limit)
-            # else:
-            #     y_coord = np.clip(ycoord, a_min=y_limit, a_max=self.max_y)
-
-        self.update_time = time
-        self.current_coord = (xcoord, ycoord)
-
-        if on_location:
-            self.current_coord = (int(xcoord), int(ycoord))
-
 
 class Operation:
     def __init__(self, name, id, options):
@@ -313,14 +311,14 @@ class Job:
 
 
 class Source:
-    def __init__(self, env, name, jobs, model, monitor):
+    def __init__(self, env, name, jobs, locations, monitor):
         self.env = env
         self.name = name
         self.jobs = jobs
-        self.model = model
+        self.locations = locations
         self.monitor = monitor
 
-        self.input_locations = [name for name in model.keys() if "Input" in name]
+        self.input_locations = [location.name for location in locations.items() if location.category == 0]
         self.process = env.process(self._generate())
 
         self.sent = 0
@@ -344,7 +342,7 @@ class Source:
             location_name = np.random.choice(self.input_locations)
             del self.monitor.jobs_before_system[job.id]
 
-            self.model[location_name].put(job)
+            self.locations[location_name].put(job)
             self.sent += 1
 
             if len(self.jobs) == self.sent:
@@ -352,11 +350,16 @@ class Source:
 
 
 class InputPoint:
-    def __init__(self, env, name, coord, model, monitor, capacity=float('inf')):
+    def __init__(self, env, name, global_id, local_id, category, coord,
+                 locations, resources, monitor, capacity=float('inf')):
         self.env = env
         self.name = name
+        self.global_id = global_id
+        self.local_id = local_id
+        self.category = category
         self.coord = coord
-        self.model = model
+        self.locations = locations
+        self.resources = resources
         self.monitor = monitor
         self.capacity = capacity
 
@@ -394,6 +397,9 @@ class InputPoint:
         location_name = yield self.call_for_machine_scheduling[job.name]
         del self.call_for_machine_scheduling[job.name]
 
+        if len(self.locations[location_name].processes) + 1 == self.locations[location_name].capacity:
+            self.locations[location_name].fully_occupied = True
+
         job.next_location = location_name
         del self.monitor.operations_unscheduled[operation.id]
 
@@ -405,7 +411,7 @@ class InputPoint:
         if self.monitor.record_events:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called")
 
-        crane = self.model[crane_name]
+        crane = self.resources[crane_name]
         crane.add_to_queue((self.name, job.id))
         if crane.idle:
             if not crane.waiting_event.triggered:
@@ -416,12 +422,16 @@ class InputPoint:
 
 
 class Machine:
-    def __init__(self, env, name, coord, id, model, monitor, capacity=1):
+    def __init__(self, env, name, global_id, local_id, category, coord,
+                 locations, resources, monitor, capacity=1):
         self.env = env
         self.name = name
+        self.global_id = global_id
+        self.local_id = local_id
+        self.category = category
         self.coord = coord
-        self.id = id
-        self.model = model
+        self.locations = locations
+        self.resources = resources
         self.monitor = monitor
         self.capacity = capacity
 
@@ -433,6 +443,8 @@ class Machine:
         self.call_for_crane_scheduling = {}
         self.call_for_transporting = {}
 
+        self.idle = True
+        self.fully_occupied = False
         self.working_time = 0.0
         self.completion_time = 0.0
 
@@ -449,6 +461,8 @@ class Machine:
         del self.processes[job.id]
         del self.jobs_after_process[job_id]
 
+        self.fully_occupied = False
+
         if "Output" in job.next_location:
             if len(self.monitor.operations_waiting) > 0:
                 self.monitor.machine_scheduling = True
@@ -456,25 +470,28 @@ class Machine:
         return job
 
     def check_status(self):
-        idle = False
-        empty = False
+        fully_occupied = self.fully_occupied
+        return fully_occupied
+
+    def get_available_time(self):
         available_time = self.env.now
 
-        if len(self.jobs_in_process) == 0:
-            idle = True
-            if len(self.jobs_after_process) == 0:
-                empty = True
-        else:
-            for id, job in self.jobs_in_process.items():
-                operation = job.get_current_operation()
-                proc_time = operation.get_processing_time(machine_id=self.id)
-                temp = operation.start_time + proc_time
-                if temp > available_time:
-                    available_time = temp
+        for id, job in self.jobs_in_process.items():
+            operation = job.get_current_operation()
+            proc_time = operation.get_processing_time(machine_id=self.id)
+            temp = operation.start_time + proc_time
 
-        return idle, empty, available_time
+            if temp > available_time:
+                available_time = temp
+
+        return available_time
+
+
 
     def _work(self, job):
+        if len(self.jobs_in_process) == self.capacity:
+            self.idle = False
+
         operation = job.get_current_operation()
         self.monitor.operations_working[operation.id] = operation
 
@@ -484,6 +501,7 @@ class Machine:
 
         processing_time = operation.get_processing_time(self.id)
         operation.working_start = self.env.now
+        operation.allocated_machine = self.name
         yield self.env.timeout(processing_time)
 
         if self.monitor.record_events:
@@ -500,10 +518,15 @@ class Machine:
         del self.jobs_in_process[job.id]
         self.jobs_after_process[job.id] = job
 
+        self.idle = True
+
         self.monitor.add_to_queue(job, from_buffer=False, scheduling_tag="machine")
         self.call_for_machine_scheduling[job.name] = self.env.event()
         location_name = yield self.call_for_machine_scheduling[job.name]
         del self.call_for_machine_scheduling[job.name]
+
+        if len(self.locations[location_name].processes) + 1 == self.locations[location_name].capacity:
+            self.locations[location_name].fully_occupied = True
 
         job.next_location = location_name
 
@@ -515,7 +538,7 @@ class Machine:
         if self.monitor.record_events:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called")
 
-        crane = self.model[crane_name]
+        crane = self.resources[crane_name]
         crane.add_to_queue((self.name, job.id))
         if crane.idle:
             if not crane.waiting_event.triggered:
@@ -526,11 +549,16 @@ class Machine:
 
 
 class Buffer:
-    def __init__(self, env, name, coord, model, monitor, capacity=float('inf')):
+    def __init__(self, env, name, global_id, local_id, category, coord,
+                 locations, resources, monitor, capacity=float('inf')):
         self.env = env
         self.name = name
+        self.global_id = global_id
+        self.local_id = local_id
+        self.category = category
         self.coord = coord
-        self.model = model
+        self.locations = locations
+        self.resources = resources
         self.monitor = monitor
         self.capacity = capacity
 
@@ -541,6 +569,8 @@ class Buffer:
         self.call_for_machine_scheduling = {}
         self.call_for_crane_scheduling = {}
         self.call_for_transporting = {}
+
+        self.fully_occupied = False
 
     def put(self, job):
         job.current_location = self.name
@@ -555,7 +585,13 @@ class Buffer:
         del self.processes[job.id]
         del self.jobs_after_process[job_id]
 
+        self.fully_occupied = False
+
         return job
+
+    def check_status(self):
+        fully_occupied = self.fully_occupied
+        return fully_occupied
 
     def _wait(self, job):
         operation = job.get_current_operation()
@@ -580,6 +616,9 @@ class Buffer:
         del self.jobs_in_process[job.id]
         self.jobs_after_process[job.id] = job
 
+        if len(self.locations[location_name].processes) + 1 == self.locations[location_name].capacity:
+            self.locations[location_name].fully_occupied = True
+
         job.next_location = location_name
 
         self.monitor.add_to_queue(job, scheduling_tag="crane")
@@ -590,7 +629,7 @@ class Buffer:
         if self.monitor.record_events:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called")
 
-        crane = self.model[crane_name]
+        crane = self.resources[crane_name]
         crane.add_to_queue((self.name, job.id))
         if crane.idle:
             if not crane.waiting_event.triggered:
@@ -600,18 +639,23 @@ class Buffer:
             yield self.call_for_transporting[job.name]
 
 
-class Output:
-    def __init__(self, env, name, coord, model, monitor, capacity=float('inf')):
+class OutputPoint:
+    def __init__(self, env, name, global_id, local_id, category, coord,
+                 sink, monitor, capacity=float('inf')):
         self.env = env
         self.name = name
+        self.global_id = global_id
+        self.local_id = local_id
+        self.category = category
         self.coord = coord
-        self.model = model
+        self.sink = sink
         self.monitor = monitor
         self.capacity = capacity
 
         self.processes = {}
         self.jobs_in_process = {}
 
+        self.fully_occupied = False
         self.completion_time = 0
 
     def put(self, job):
@@ -620,6 +664,10 @@ class Output:
 
         self.processes[job.id] = self.env.process(self._departure(job))
         self.jobs_in_process[job.id] = job
+
+    def check_status(self):
+        fully_occupied = self.fully_occupied
+        return fully_occupied
 
     def _departure(self, job):
         self.monitor.jobs_after_system[job.id] = job
@@ -632,7 +680,8 @@ class Output:
 
         yield self.env.timeout(0)
 
-        self.model["Sink"].put(job)
+        self.sink.put(job)
+        self.fully_occupied = False
 
 
 class Sink:
