@@ -39,8 +39,8 @@ class Crane:
         self.waiting_event = None
         self.process = env.process(self._run())
 
-    def add_to_queue(self, location_name):
-        self.queue.append(location_name)
+    def add_to_queue(self, working_order):
+        self.queue.append(working_order)
 
     def set_opposite_crane(self, crane):
         self.opposite = crane
@@ -121,8 +121,8 @@ class Crane:
             else:
                 self.idle = False
 
-                location_name, job_id = self.queue.pop(0)
-                location = self.locations[location_name]
+                job_id, current_location, next_location = self.queue.pop(0)
+                location = self.locations[current_location]
 
                 self.status = "loading"
                 self.working_start = self.env.now
@@ -234,14 +234,9 @@ class Crane:
                 break
 
     def _check_interference(self):
-        flag = False
-        if self.opposite.idle:
-            flag = True
-        else:
-            if self.working_start < self.opposite.working_start:
-                flag = True
+        priority_flag = self._check_priority()
 
-        if flag:
+        if priority_flag:
             avoidance = False
             safety_xcoord = None
         else:
@@ -273,6 +268,39 @@ class Crane:
                     safety_xcoord = self.opposite.target_coord[0] + self.safety_margin
 
         return avoidance, safety_xcoord
+
+    def _check_priority(self):
+        priority_flag = False
+        if self.opposite.idle:
+            priority_flag = True
+        else:
+            if self.status == "loading":
+                if self.working_start < self.opposite.working_start:
+                    priority_flag = True
+                else:
+                    priority_flag = False
+            elif self.status == "unloading":
+                location_list = []
+
+                if self.opposite.status == "loading":
+                    location_list.append(self.opposite.to_location)
+
+                for working_order in self.opposite.queue:
+                    job_id, current_location, next_location = working_order
+                    location = self.locations[current_location]
+                    if location.category == 1 or location.category == 2:
+                        if location.fully_occupied:
+                            location_list.append(location.name)
+
+                if self.to_location in location_list:
+                    priority_flag = False
+                else:
+                    if self.working_start < self.opposite.working_start:
+                        priority_flag = True
+                    else:
+                        priority_flag = False
+
+        return priority_flag
 
 
 class Operation:
@@ -392,7 +420,8 @@ class InputPoint:
         if self.monitor.record_events:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Job_Arrived")
 
-        self.monitor.add_to_queue(job, from_buffer=False, scheduling_tag="machine")
+        self.monitor.add_to_queue(job, scheduling_mode="machine")
+        self.monitor.set_scheduling_flag(scheduling_mode="machine")
         self.call_for_machine_scheduling[job.name] = self.env.event()
         location_name = yield self.call_for_machine_scheduling[job.name]
         del self.call_for_machine_scheduling[job.name]
@@ -403,7 +432,8 @@ class InputPoint:
         job.next_location = location_name
         del self.monitor.operations_unscheduled[operation.id]
 
-        self.monitor.add_to_queue(job, scheduling_tag="crane")
+        self.monitor.add_to_queue(job, scheduling_mode="crane")
+        self.monitor.set_scheduling_flag(scheduling_mode="crane")
         self.call_for_crane_scheduling[job.name] = self.env.event()
         crane_name = yield self.call_for_crane_scheduling[job.name]
         del self.call_for_crane_scheduling[job.name]
@@ -412,7 +442,7 @@ class InputPoint:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called")
 
         crane = self.resources[crane_name]
-        crane.add_to_queue((self.name, job.id))
+        crane.add_to_queue((job.id, job.current_location, job.next_location))
         if crane.idle:
             if not crane.waiting_event.triggered:
                 crane.waiting_event.succeed()
@@ -461,8 +491,6 @@ class Machine:
         del self.processes[job.id]
         del self.jobs_after_process[job_id]
 
-        self.fully_occupied = False
-
         if "Output" in job.next_location:
             if len(self.monitor.operations_waiting) > 0:
                 self.monitor.machine_scheduling = True
@@ -476,17 +504,15 @@ class Machine:
     def get_available_time(self):
         available_time = self.env.now
 
-        for id, job in self.jobs_in_process.items():
+        for job in self.jobs_in_process.values():
             operation = job.get_current_operation()
-            proc_time = operation.get_processing_time(machine_id=self.id)
+            proc_time = operation.get_processing_time(machine_id=self.local_id)
             temp = operation.start_time + proc_time
 
             if temp > available_time:
                 available_time = temp
 
         return available_time
-
-
 
     def _work(self, job):
         if len(self.jobs_in_process) == self.capacity:
@@ -499,7 +525,7 @@ class Machine:
             self.monitor.record(self.env.now, location=self.name, job=job.name,
                                 operation=operation.name, event="Working_Started")
 
-        processing_time = operation.get_processing_time(self.id)
+        processing_time = operation.get_processing_time(self.local_id)
         operation.working_start = self.env.now
         operation.allocated_machine = self.name
         yield self.env.timeout(processing_time)
@@ -520,7 +546,8 @@ class Machine:
 
         self.idle = True
 
-        self.monitor.add_to_queue(job, from_buffer=False, scheduling_tag="machine")
+        self.monitor.add_to_queue(job, scheduling_mode="machine")
+        self.monitor.set_scheduling_flag(scheduling_mode="machine")
         self.call_for_machine_scheduling[job.name] = self.env.event()
         location_name = yield self.call_for_machine_scheduling[job.name]
         del self.call_for_machine_scheduling[job.name]
@@ -530,16 +557,19 @@ class Machine:
 
         job.next_location = location_name
 
-        self.monitor.add_to_queue(job, scheduling_tag="crane")
+        self.monitor.add_to_queue(job, scheduling_mode="crane")
+        self.monitor.set_scheduling_flag(scheduling_mode="crane")
         self.call_for_crane_scheduling[job.name] = self.env.event()
         crane_name = yield self.call_for_crane_scheduling[job.name]
         del self.call_for_crane_scheduling[job.name]
+
+        self.fully_occupied = False
 
         if self.monitor.record_events:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called")
 
         crane = self.resources[crane_name]
-        crane.add_to_queue((self.name, job.id))
+        crane.add_to_queue((job.id, job.current_location, job.next_location))
         if crane.idle:
             if not crane.waiting_event.triggered:
                 crane.waiting_event.succeed()
@@ -585,8 +615,6 @@ class Buffer:
         del self.processes[job.id]
         del self.jobs_after_process[job_id]
 
-        self.fully_occupied = False
-
         return job
 
     def check_status(self):
@@ -602,7 +630,7 @@ class Buffer:
                                 operation=operation.name, event="Waiting Started")
 
         operation.waiting_start = self.env.now
-        self.monitor.add_to_queue(job, from_buffer=True, scheduling_tag="machine")
+        self.monitor.add_to_queue(job, scheduling_mode="machine")
         self.call_for_machine_scheduling[job.name] = self.env.event()
         location_name = yield self.call_for_machine_scheduling[job.name]
         del self.call_for_machine_scheduling[job.name]
@@ -621,16 +649,19 @@ class Buffer:
 
         job.next_location = location_name
 
-        self.monitor.add_to_queue(job, scheduling_tag="crane")
+        self.monitor.add_to_queue(job, scheduling_mode="crane")
+        self.monitor.set_scheduling_flag(scheduling_mode="crane")
         self.call_for_crane_scheduling[job.name] = self.env.event()
         crane_name = yield self.call_for_crane_scheduling[job.name]
         del self.call_for_crane_scheduling[job.name]
+
+        self.fully_occupied = False
 
         if self.monitor.record_events:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called")
 
         crane = self.resources[crane_name]
-        crane.add_to_queue((self.name, job.id))
+        crane.add_to_queue((job.id, job.current_location, job.next_location))
         if crane.idle:
             if not crane.waiting_event.triggered:
                 crane.waiting_event.succeed()
@@ -703,7 +734,7 @@ class Monitor:
         self.record_events = record_events
 
         self.queue_for_machine_scheduling = {}
-        self.queue_for_crane_scheduling = {}
+        self.queue_for_crane_scheduling = None
         self.machine_scheduling = False
         self.crane_scheduling = False
 
@@ -723,32 +754,36 @@ class Monitor:
         self.event = []
         self.info = []
 
-    def add_to_queue(self, job, from_buffer=False, scheduling_tag='machine'):
-        if scheduling_tag == "machine":
-            self.queue_for_machine_scheduling[job.id] = job
-            if not self.machine_scheduling and not from_buffer:
-                self.machine_scheduling = True
-        elif scheduling_tag == "crane":
-            self.queue_for_crane_scheduling[job.id] = job
+    def set_scheduling_flag(self, scheduling_mode='machine'):
+        if scheduling_mode == 'machine':
+            self.machine_scheduling = True
+        elif scheduling_mode == 'crane':
+            self.crane_scheduling = True
 
-    def remove_from_queue(self, job_id, scheduling_tag='machine'):
-        if scheduling_tag == "machine":
+    def add_to_queue(self, job, scheduling_mode='machine'):
+        if scheduling_mode == "machine":
+            self.queue_for_machine_scheduling[job.id] = job
+        elif scheduling_mode == "crane":
+            self.queue_for_crane_scheduling = job
+
+    def remove_from_queue(self, job_id=None, scheduling_mode='machine'):
+        if scheduling_mode == "machine":
+            assert job_id is not None
+
             job = self.queue_for_machine_scheduling[job_id]
             del self.queue_for_machine_scheduling[job_id]
 
-            new_operations = []
-            for job_in_queue in self.queue_for_machine_scheduling.values():
-                operation = job_in_queue.get_current_operation()
-                if not operation.id in self.operations_waiting.keys():
-                    new_operations.append(operation.id)
-
-            if len(new_operations) == 0:
-                self.machine_scheduling = False
+            self.machine_scheduling = False
 
             return job
 
-        elif scheduling_tag == "crane":
-            pass
+        elif scheduling_mode == "crane":
+            job = self.queue_for_crane_scheduling
+            self.queue_for_crane_scheduling = None
+
+            self.crane_scheduling = False
+
+            return job
 
     def record(self, time, location=None, job=None, operation=None, event=None, info=None):
         self.time.append(time)

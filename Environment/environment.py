@@ -36,6 +36,14 @@ class Factory:
         self.num_rows = self.df_locations["Y_Coordinate"].max()
         self.num_bays = self.df_locations["X_Coordinate"].max()
 
+        self.location_id_to_name = {}
+        for i, row in self.df_locations.iterrows():
+            self.location_id_to_name[int(row["Global_Index"])] = row["Name"]
+
+        self.resource_id_to_name = {}
+        for i, row in self.df_resources.iterrows():
+            self.resource_id_to_name[int(row["Index"])] = row["Name"]
+
         self.input_dim_crane = 4
         self.input_dim_operation = 9
         self.input_dim_machine = 6
@@ -64,99 +72,56 @@ class Factory:
 
     def step(self, action):
         if self.scheduling_mode == "machine":
-            machine_id = action % self.num_machines
-            job_id = action // self.num_machines
-            done = False
+            location_id = action % (self.num_machines + self.num_buffers + self.num_outputpoints)
+            job_id = action // (self.num_machines + self.num_buffers + self.num_outputpoints)
+
+            job = self.monitor.remove_from_queue(job_id, scheduling_mode=self.scheduling_mode)
+            current_location = job.current_location
+            next_location = self.location_id_to_name[location_id]
+
+            self.locations[current_location].call_for_machine_scheduling[job.name].succeed(next_location)
+            self.scheduling_mode = "crane"
         else:
             crane_id = action
 
-        machine_flag = np.zeros(self.num_machines, dtype=bool)
-        for id, name in self.machine_ids.items():
-            machine = self.model[name]
-            idle, available_time = machine.check_status()
-            if id == machine_id:
-                machine_flag[id] = False
-            else:
-                machine_flag[id] = idle
+            job = self.monitor.remove_from_queue(scheduling_mode=self.scheduling_mode)
+            current_location = job.current_location
+            crane = self.resource_id_to_name[crane_id]
 
-        job = self.monitor.remove_queue(job_id, machine_flag)
-        operation = job.get_current_operation()
-        current_machine = job.current_machine
-        next_machine = self.machine_ids[machine_id] if self.machine_ids.get(machine_id) is not None else "Buffer"
+            self.locations[current_location].call_for_crane_scheduling[job.name].succeed(crane)
+            self.scheduling_mode = "machine"
 
-        self.completion_time_updated[job.id] = self.sim_env.now + operation.get_processing_time(machine_id)
+            mask = self._get_mask()
+            if mask.any():
+                self.monitor.set_scheduling_flag(scheduling_mode="machine")
 
-        if current_machine is None:
-            self.model["Source"].calling_event[job.name].succeed(next_machine)
-        else:
-            self.model[current_machine].calling_event[job.name].succeed(next_machine)
-
-        self.actions_done.append(machine_id)
+        done = False
 
         while True:
-            while True:
-                if self.monitor.scheduling:
-                    while self.sim_env.now in [event[0] for event in self.sim_env._queue]:
-                        self.sim_env.step()
-                    break
-                if len(self.monitor.operations_done) == len(self.df_scenario):
-                    done = True
-                    break
-
-                if len(self.sim_env._queue) == 0:
-                    log = self.monitor.get_logs()
-                    print(0)
-
-                self.sim_env.step()
-
-            if self.decision_time != self.sim_env.now:
-                self.actions_done = []
-
-            if self.algorithm == "RL":
-                next_state, current_ops, added_info = self._get_state_for_RL()
-                mask = self._get_mask()
-            else:
-                next_state = self._get_state_for_heuristics()
-
-            if done:
+            if self.monitor.machine_scheduling or self.monitor.crane_scheduling:
+                while self.sim_env.now in [event[0] for event in self.sim_env._queue]:
+                    self.sim_env.step()
                 break
 
-            jobs_to_buffer = []
-            for job in self.monitor.jobs_in_queue.values():
-                if not mask[:, job.id].any():
-                    operation = job.get_current_operation()
-                    if not operation.id in self.monitor.operations_in_buffer.keys():
-                        jobs_to_buffer.append(job.id)
-
-            for job_id in jobs_to_buffer:
-                machine_flag = np.zeros(self.num_machines, dtype=bool)
-                job = self.monitor.remove_queue(job_id, machine_flag)
-                current_machine = job.current_machine
-                next_machine = "Buffer"
-
-                if current_machine is None:
-                    self.model["Source"].calling_event[job.name].succeed(next_machine)
-                else:
-                    self.model[current_machine].calling_event[job.name].succeed(next_machine)
-
-            if not mask.any():
-                if self.monitor.scheduling:
-                    self.monitor.scheduling = False
-            else:
+            if len(self.monitor.operations_done) == len(self.df_operations):
+                done = True
                 break
 
+            self.sim_env.step()
+
+        next_state = self._get_state()
+        mask = self._get_mask()
         reward = self._calculate_reward()
 
         self.estimated_completion_time = copy.copy(self.estimated_completion_time_updated)
-        self.completion_time = copy.copy(self.completion_time_updated)
-        self.total_tardiness = self.model["Sink"].total_tardiness
         if self.decision_time != self.sim_env.now:
             self.decision_time = self.sim_env.now
 
-        return next_state, reward, done, mask, current_ops, added_info
+        return next_state, reward, done, mask
 
     def reset(self):
-        self.sim_env, self.jobs, self.locations, self.resources, self.monitor = self._modeling()
+        self.sim_env, self.jobs, self.source, self.sink, self.locations, self.resources, self.monitor \
+            = self._build_model()
 
         self.scheduling_mode = "machine"
         self.decision_time = 0.0
@@ -174,34 +139,14 @@ class Factory:
             if self.decision_time != self.sim_env.now:
                 self.decision_time = self.sim_env.now
 
-            state, current_ops, added_info = self._get_state()
+            state = self._get_state()
             mask = self._get_mask()
 
             self.decision_time = self.sim_env.now
 
         self.estimated_completion_time = copy.copy(self.estimated_completion_time_updated)
 
-        return state, mask, current_ops, added_info
-
-    def _set_static_parameters(self, df_operations, df_locations, df_resources):
-        mapping_for_machine_scheduling = OrderedDict()
-        mapping_for_crane_scheduling = OrderedDict()
-
-        index_for_machine_scheduling = 0
-        index_for_crane_scheduling = 0
-        for i, row in df_locations.iterrows():
-            if int(row["Location_Type"]) in [1, 2, 3]:
-                mapping_for_machine_scheduling[row["Location_Index"]] = index
-                index_for_machine_scheduling += 1
-
-        job_ids = OrderedDict()
-        for i, name in zip(df_scenario["Job_Index"].unique(), df_scenario["Job_Name"].unique()):
-            job_ids[int(i)] = name
-
-        machine_ids = OrderedDict()
-        for i, name in enumerate(df_scenario.columns[9:]):
-            machine_ids[int(i)] = name
-
+        return state, mask
 
     def _get_mask(self):
         if self.scheduling_mode == "machine":
@@ -236,9 +181,14 @@ class Factory:
                         else:
                             continue
                     elif category == 2:
-                        mask_buffer[global_id - self.num_inputpoints, job.id] = flag_availability & flag_accesibility
+                        if operation.id in self.monitor.operations_waiting.keys():
+                            continue
+                        else:
+                            mask_buffer[global_id - self.num_inputpoints, job.id] \
+                                = flag_availability & flag_accesibility
                     elif category == 3:
-                        mask_output[global_id - self.num_inputpoints, job.id] = flag_availability & flag_accesibility
+                        mask_output[global_id - self.num_inputpoints, job.id] \
+                            = flag_availability & flag_accesibility
                     else:
                         continue
 
@@ -254,10 +204,10 @@ class Factory:
                 location_name = job.current_location
                 location_coord = self.locations[location_name].coord
 
-                for crane_id, crane_name in self.crane_ids.items():
-                    if ((crane_id == 0) and (location_coord[0] < self.num_bays - self.safety_margin)) or \
-                            ((crane_id == 1) and (location_coord[0] > self.safety_margin - 1)):
-                        mask[crane_id] = 1
+                for crane in self.resources.values():
+                    if ((crane.id == 0) and (location_coord[0] < self.num_bays - self.safety_margin)) or \
+                            ((crane.id == 1) and (location_coord[0] > self.safety_margin - 1)):
+                        mask[crane.id] = 1
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
 
@@ -269,7 +219,7 @@ class Factory:
     def _calculate_reward(self):
         pass
 
-    def _modeling(self):
+    def _build_model(self):
         sim_env = simpy.Environment()
         monitor = Monitor(self.record_events)
 
@@ -326,7 +276,7 @@ class Factory:
             crane = Crane(sim_env, name, index, self.safety_margin, x_velocity, y_velocity, initial_coord, locations, monitor)
             resources[name] = crane
 
-        return sim_env, jobs, locations, resources, monitor
+        return sim_env, jobs, source, sink, locations, resources, monitor
 
 
 if __name__ == "__main__":
