@@ -339,26 +339,23 @@ class Job:
 
 
 class Source:
-    def __init__(self, env, name, jobs, locations, monitor):
+    def __init__(self, env, name, jobs, locations, input_points, monitor):
         self.env = env
         self.name = name
         self.jobs = jobs
         self.locations = locations
+        self.input_points = input_points
         self.monitor = monitor
 
-        self.input_locations = [location.name for location in locations.items() if location.category == 0]
         self.process = env.process(self._generate())
 
         self.sent = 0
 
-    def _initialize(self):
+    def _generate(self):
         for job in self.jobs:
             self.monitor.jobs_before_system[job.id] = job
             for i, operation in enumerate(job.operations):
                 self.monitor.operations_unscheduled[operation.id] = operation
-
-    def _generate(self):
-        self._initialize()
 
         while True:
             job = self.jobs[self.sent]
@@ -367,7 +364,7 @@ class Source:
             if inter_arrival_time > 0:
                 yield self.env.timeout(inter_arrival_time)
 
-            location_name = np.random.choice(self.input_locations)
+            location_name = np.random.choice(self.input_points)
             del self.monitor.jobs_before_system[job.id]
 
             self.locations[location_name].put(job)

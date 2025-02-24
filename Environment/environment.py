@@ -4,10 +4,21 @@ import copy
 import numpy as np
 import pandas as pd
 
-from collections import OrderedDict
 from torch_geometric.data import HeteroData
 from Environment.data import DataGenerator
 from Environment.simulation import *
+
+
+class State:
+    def __init__(self):
+        self.data = None
+        self.mask = None
+        self.current_ops = None
+
+    def update(self, data, mask, current_ops=None):
+        self.data = data
+        self.mask = mask
+        self.current_ops = current_ops if current_ops is not None else self.current_ops
 
 
 class Factory:
@@ -110,14 +121,13 @@ class Factory:
             self.sim_env.step()
 
         next_state = self._get_state()
-        mask = self._get_mask()
         reward = self._calculate_reward()
 
         self.estimated_completion_time = copy.copy(self.estimated_completion_time_updated)
         if self.decision_time != self.sim_env.now:
             self.decision_time = self.sim_env.now
 
-        return next_state, reward, done, mask
+        return next_state, reward, done
 
     def reset(self):
         self.sim_env, self.jobs, self.source, self.sink, self.locations, self.resources, self.monitor \
@@ -129,24 +139,21 @@ class Factory:
         self.estimated_completion_time_updated = np.zeros(self.num_jobs)
 
         while True:
-            while True:
-                if self.monitor.machine_scheduling or self.monitor.crane_scheduling:
-                    while self.sim_env.now in [event[0] for event in self.sim_env._queue]:
-                        self.sim_env.step()
-                    break
-                self.sim_env.step()
+            if self.monitor.machine_scheduling or self.monitor.crane_scheduling:
+                while self.sim_env.now in [event[0] for event in self.sim_env._queue]:
+                    self.sim_env.step()
+                break
+            self.sim_env.step()
 
-            if self.decision_time != self.sim_env.now:
-                self.decision_time = self.sim_env.now
-
-            state = self._get_state()
-            mask = self._get_mask()
-
+        if self.decision_time != self.sim_env.now:
             self.decision_time = self.sim_env.now
 
+        state = self._get_state()
+
+        self.decision_time = self.sim_env.now
         self.estimated_completion_time = copy.copy(self.estimated_completion_time_updated)
 
-        return state, mask
+        return state
 
     def _get_mask(self):
         if self.scheduling_mode == "machine":
@@ -157,9 +164,9 @@ class Factory:
             mask_buffer = np.zeros((num_rows, num_columns), dtype=bool)
             mask_output = np.zeros((num_rows, num_columns), dtype=bool)
 
-            for job_id, job in self.monitor.queue_for_machine_scheduling.values():
+            for job in self.monitor.queue_for_machine_scheduling.values():
                 operation = job.get_current_operation()
-                current_coord = self.locations[job.current_location]
+                current_coord = self.locations[job.current_location].coord
 
                 for name, location in self.locations.items():
                     local_id = location.local_id
@@ -167,30 +174,33 @@ class Factory:
                     target_coord = location.coord
                     category = location.category
 
-                    flag_availability = location.check_status()
-                    flag_accesibility = (current_coord[0] < self.safety_margin
-                                         and target_coord[0] < self.num_bays - self.safety_margin) or \
-                                        (current_coord[0] > self.num_bays - self.safety_margin - 1
-                                         and target_coord[0] > self.safety_margin - 1)
-
-                    if category == 1:
-                        if operation is not None:
-                            flag_eligibility = int(operation.get_processing_time(local_id)) != 0
-                            mask_machine[global_id - self.num_inputpoints, job.id] \
-                                = flag_eligibility & flag_availability & flag_accesibility
-                        else:
-                            continue
-                    elif category == 2:
-                        if operation.id in self.monitor.operations_waiting.keys():
-                            continue
-                        else:
-                            mask_buffer[global_id - self.num_inputpoints, job.id] \
-                                = flag_availability & flag_accesibility
-                    elif category == 3:
-                        mask_output[global_id - self.num_inputpoints, job.id] \
-                            = flag_availability & flag_accesibility
-                    else:
+                    if category == 0:
                         continue
+                    else:
+                        flag_availability = location.check_status()
+                        flag_accesibility = (current_coord[0] < self.safety_margin
+                                             and target_coord[0] < self.num_bays - self.safety_margin) or \
+                                            (current_coord[0] > self.num_bays - self.safety_margin - 1
+                                             and target_coord[0] > self.safety_margin - 1)
+
+                        if category == 1:
+                            if operation is not None:
+                                flag_eligibility = int(operation.get_processing_time(local_id)) != 0
+                                mask_machine[global_id - self.num_inputpoints, job.id] \
+                                    = flag_eligibility & flag_availability & flag_accesibility
+                            else:
+                                continue
+                        elif category == 2:
+                            if operation.id in self.monitor.operations_waiting.keys():
+                                continue
+                            else:
+                                mask_buffer[global_id - self.num_inputpoints, job.id] \
+                                    = flag_availability & flag_accesibility
+                        elif category == 3:
+                            mask_output[global_id - self.num_inputpoints, job.id] \
+                                = flag_availability & flag_accesibility
+                        else:
+                            continue
 
             if (mask_machine | mask_output).any():
                 mask = mask_machine | mask_output
@@ -200,24 +210,65 @@ class Factory:
         else:
             mask = np.zeros(self.num_cranes, dtype=bool)
 
-            for job in self.monitor.queue_for_crane_scheduling.values():
-                location_name = job.current_location
-                location_coord = self.locations[location_name].coord
+            job = self.monitor.queue_for_crane_scheduling
+            location_name = job.current_location
+            location_coord = self.locations[location_name].coord
 
-                for crane in self.resources.values():
-                    if ((crane.id == 0) and (location_coord[0] < self.num_bays - self.safety_margin)) or \
-                            ((crane.id == 1) and (location_coord[0] > self.safety_margin - 1)):
-                        mask[crane.id] = 1
+            for crane in self.resources.values():
+                if ((crane.id == 0) and (location_coord[0] < self.num_bays - self.safety_margin)) or \
+                        ((crane.id == 1) and (location_coord[0] > self.safety_margin - 1)):
+                    mask[crane.id] = 1
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
 
         return mask
 
     def _get_state(self):
-        pass
+        if self.scheduling_mode == "machine":
+            machine_scheduling_algorithm = self.algorithm[0]
+
+            if machine_scheduling_algorithm == "RL":
+                pass
+            else:
+                num_rows = self.num_machines + self.num_buffers + self.num_outputpoints
+                num_columns = self.num_jobs
+
+                data = np.zeros((num_rows, num_columns))
+
+                if machine_scheduling_algorithm == "SPT":
+                    pass
+                elif machine_scheduling_algorithm == "MOR":
+                    pass
+                elif machine_scheduling_algorithm == "MWKR":
+                    pass
+                elif machine_scheduling_algorithm == "RAND":
+                    data[:, :] = 1.0
+        else:
+            crane_scheduling_algorithm = self.algorithm[1]
+
+            if crane_scheduling_algorithm == "RL":
+                pass
+            else:
+                data = np.zeros(self.num_cranes)
+
+                if crane_scheduling_algorithm == "SETT":
+                    pass
+                elif crane_scheduling_algorithm == "NCR":
+                    pass
+                elif crane_scheduling_algorithm == "LWKR":
+                    pass
+                elif crane_scheduling_algorithm == "RAND":
+                    data[:] = 1.0
+
+        mask = self._get_mask()
+
+        state = State()
+        state.update(data, mask)
+
+        return state
 
     def _calculate_reward(self):
-        pass
+        return 0.0
 
     def _build_model(self):
         sim_env = simpy.Environment()
@@ -241,18 +292,19 @@ class Factory:
             jobs.append(job)
 
         jobs = sorted(jobs, key=lambda x: x.arrival_time)
+        input_points = self.df_locations["Name"][self.df_locations["Category"] == 0].to_list()
 
         locations = {}
         resources = {}
 
-        source = Source(sim_env, "Source", jobs, locations, monitor)
+        source = Source(sim_env, "Source", jobs, locations, input_points, monitor)
         sink = Sink(sim_env, "Sink", monitor)
 
         for _, row in self.df_locations.iterrows():
             name = row["Name"]
-            global_index = row["Global_Index"]
-            local_index = row["Local_Index"]
-            category = row["Category"]
+            global_index = int(row["Global_Index"])
+            local_index = int(row["Local_Index"])
+            category = int(row["Category"])
             coord = (int(row["X_Coordinate"]), int(row["Y_Coordinate"]))
 
             if category == 0:
@@ -268,9 +320,9 @@ class Factory:
 
         for _, row in self.df_resources.iterrows():
             name = row["Name"]
-            index = row["Index"]
-            x_velocity = row["X_Velocity"]
-            y_velocity = row["Y_Velocity"]
+            index = int(row["Index"])
+            x_velocity = float(row["X_Velocity"])
+            y_velocity = float(row["Y_Velocity"])
             initial_coord = (int(row["Initial_X_Coordinate"]), int(row["Initial_Y_Coordinate"]))
 
             crane = Crane(sim_env, name, index, self.safety_margin, x_velocity, y_velocity, initial_coord, locations, monitor)
@@ -280,6 +332,31 @@ class Factory:
 
 
 if __name__ == "__main__":
+    from Agent.FlexibleJobShop.heuristic import MachineSchedulingHeuristic
+    from Agent.CraneTransportation.heuristic import CraneSchedulingHeuristic
+
+    agent_ms = MachineSchedulingHeuristic()
+    agent_cs = CraneSchedulingHeuristic()
+
     data_src = DataGenerator()
-    env = Factory(data_src)
+    env = Factory(data_src, algorithm=("RAND","RAND"))
+
+    step = 0
+
     state = env.reset()
+
+    while True:
+        if env.scheduling_mode == "machine":
+            action = agent_ms.act(state)
+        else:
+            action = agent_cs.act(state)
+
+        next_state, reward, done = env.step(action)
+
+        state = next_state
+        step += 1
+
+        print(step)
+
+        if done:
+            break
