@@ -44,8 +44,11 @@ class Factory:
         self.num_outputpoints = len([category for category in self.df_locations["Category"] if int(category) == 3])
         self.num_cranes = len(self.df_resources)
 
-        self.num_rows = self.df_locations["Y_Coordinate"].max()
-        self.num_bays = self.df_locations["X_Coordinate"].max()
+        self.num_rows = len(self.df_locations["Y_Coordinate"].unique())
+        self.num_bays = len(self.df_locations["X_Coordinate"].unique())
+
+        self.x_max = int(self.df_locations["X_Coordinate"].max())
+        self.y_max = int(self.df_locations["Y_Coordinate"].max())
 
         self.location_id_to_name = {}
         for i, row in self.df_locations.iterrows():
@@ -83,8 +86,11 @@ class Factory:
 
     def step(self, action):
         if self.scheduling_mode == "machine":
-            location_id = action % (self.num_machines + self.num_buffers + self.num_outputpoints)
-            job_id = action // (self.num_machines + self.num_buffers + self.num_outputpoints)
+            location_id = action // self.num_jobs + self.num_inputpoints
+            job_id = action % self.num_jobs
+
+            if not job_id in self.monitor.queue_for_machine_scheduling.keys():
+                print(0)
 
             job = self.monitor.remove_from_queue(job_id, scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
@@ -177,10 +183,10 @@ class Factory:
                     if category == 0:
                         continue
                     else:
-                        flag_availability = location.check_status()
+                        flag_availability = ~location.check_status()
                         flag_accesibility = (current_coord[0] < self.safety_margin
-                                             and target_coord[0] < self.num_bays - self.safety_margin) or \
-                                            (current_coord[0] > self.num_bays - self.safety_margin - 1
+                                             and target_coord[0] < self.x_max - self.safety_margin) or \
+                                            (current_coord[0] > self.x_max - self.safety_margin - 1
                                              and target_coord[0] > self.safety_margin - 1)
 
                         if category == 1:
@@ -215,7 +221,7 @@ class Factory:
             location_coord = self.locations[location_name].coord
 
             for crane in self.resources.values():
-                if ((crane.id == 0) and (location_coord[0] < self.num_bays - self.safety_margin)) or \
+                if ((crane.id == 0) and (location_coord[0] < self.x_max - self.safety_margin)) or \
                         ((crane.id == 1) and (location_coord[0] > self.safety_margin - 1)):
                     mask[crane.id] = 1
 
@@ -327,6 +333,13 @@ class Factory:
 
             crane = Crane(sim_env, name, index, self.safety_margin, x_velocity, y_velocity, initial_coord, locations, monitor)
             resources[name] = crane
+
+        for crane in resources.values():
+            if crane.id == 0:
+                opposite_crane = resources["Crane-1"]
+            else:
+                opposite_crane = resources["Crane-0"]
+            crane.set_opposite_crane(opposite_crane)
 
         return sim_env, jobs, source, sink, locations, resources, monitor
 

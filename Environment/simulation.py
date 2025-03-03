@@ -131,7 +131,7 @@ class Crane:
                 self.to_location = self.location_mapping[self.target_coord].name
 
                 yield self.env.process(self._moving(location.coord))
-                self.job = self.locations[self.to_location].get_job()
+                self.job = self.locations[self.to_location].get(job_id)
 
                 self.status = "unloading"
                 self.working_start = self.env.now
@@ -210,12 +210,17 @@ class Crane:
                     xcoord_opposite = self.opposite.current_coord[0]
 
                     if self.id == 0 and xcoord > xcoord_opposite - self.safety_margin:
+                        flag = True
                         target_coord_opposite = (xcoord + self.safety_margin, self.opposite.current_coord[1])
                     elif self.id == 1 and xcoord < xcoord_opposite + self.safety_margin:
+                        flag = True
                         target_coord_opposite = (xcoord - self.safety_margin, self.opposite.current_coord[1])
+                    else:
+                        flag = False
 
-                    if not self.opposite.waiting_event.triggered:
-                        self.opposite.waiting_event.succeed(target_coord_opposite)
+                    if flag:
+                        if not self.opposite.waiting_event.triggered:
+                            self.opposite.waiting_event.succeed(target_coord_opposite)
 
                 yield self.env.timeout(travel_time)
                 self.opposite.update_location(self.env.now)
@@ -523,7 +528,7 @@ class Machine:
                                 operation=operation.name, event="Working_Started")
 
         processing_time = operation.get_processing_time(self.local_id)
-        operation.working_start = self.env.now
+        operation.start_time = self.env.now
         operation.allocated_machine = self.name
         yield self.env.timeout(processing_time)
 
@@ -533,11 +538,11 @@ class Machine:
 
         self.working_time += processing_time
         self.completion_time = self.env.now
-        operation.working_finish = self.env.now
+        operation.finish_time = self.env.now
 
         job.step += 1
         self.monitor.operations_done[operation.id] = operation
-        del self.monitor.operations_in_machine[operation.id]
+        del self.monitor.operations_working[operation.id]
         del self.jobs_in_process[job.id]
         self.jobs_after_process[job.id] = job
 
@@ -620,7 +625,7 @@ class Buffer:
 
     def _wait(self, job):
         operation = job.get_current_operation()
-        self.monitor.operations_in_buffer[operation.id] = operation
+        self.monitor.operations_waiting[operation.id] = operation
 
         if self.monitor.record_events:
             self.monitor.record(self.env.now, location=self.name, job=job.name,
