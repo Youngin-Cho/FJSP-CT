@@ -127,7 +127,7 @@ class Crane:
                 self.status = "loading"
                 self.working_start = self.env.now
                 self.target_coord = location.coord
-                self.from_location = self.location_mapping[self.current_coord].name
+                # self.from_location = self.location_mapping[self.current_coord].name
                 self.to_location = self.location_mapping[self.target_coord].name
 
                 yield self.env.process(self._moving(location.coord))
@@ -136,14 +136,14 @@ class Crane:
                 self.status = "unloading"
                 self.working_start = self.env.now
                 self.target_coord = self.locations[self.job.next_location].coord
-                self.from_location = self.location_mapping[self.current_coord].name
+                # self.from_location = self.location_mapping[self.current_coord].name
                 self.to_location = self.location_mapping[self.target_coord].name
 
                 yield self.env.process(self._moving(location.coord))
                 self.locations[self.to_location].put(self.job)
 
                 self.target_coord = (-1.0, -1.0)
-                self.from_location = None
+                # self.from_location = None
                 self.to_location = None
                 self.job = None
 
@@ -565,19 +565,23 @@ class Machine:
         crane_name = yield self.call_for_crane_scheduling[job.name]
         del self.call_for_crane_scheduling[job.name]
 
-        self.fully_occupied = False
+        if crane_name is not None:
+            self.fully_occupied = False
 
-        if self.monitor.record_events:
-            self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called")
+            if self.monitor.record_events:
+                self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called")
 
-        crane = self.resources[crane_name]
-        crane.add_to_queue((job.id, job.current_location, job.next_location))
-        if crane.idle:
-            if not crane.waiting_event.triggered:
-                crane.waiting_event.succeed()
+            crane = self.resources[crane_name]
+            crane.add_to_queue((job.id, job.current_location, job.next_location))
+            if crane.idle:
+                if not crane.waiting_event.triggered:
+                    crane.waiting_event.succeed()
+            else:
+                self.call_for_transporting[job.name] = self.env.event()
+                yield self.call_for_transporting[job.name]
         else:
-            self.call_for_transporting[job.name] = self.env.event()
-            yield self.call_for_transporting[job.name]
+            self.get(job.id)
+            self.put(job)
 
 
 class Buffer:
@@ -686,7 +690,6 @@ class OutputPoint:
         self.capacity = capacity
 
         self.processes = {}
-        self.jobs_in_process = {}
 
         self.fully_occupied = False
         self.completion_time = 0
@@ -696,7 +699,6 @@ class OutputPoint:
         job.next_location = None
 
         self.processes[job.id] = self.env.process(self._departure(job))
-        self.jobs_in_process[job.id] = job
 
     def check_status(self):
         fully_occupied = self.fully_occupied
@@ -713,6 +715,7 @@ class OutputPoint:
 
         yield self.env.timeout(0)
 
+        del self.processes[job.id]
         self.sink.put(job)
         self.fully_occupied = False
 

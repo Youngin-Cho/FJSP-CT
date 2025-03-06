@@ -83,14 +83,10 @@ class Factory:
                           "machine": self.num_machines,
                           "crane": self.num_cranes}
 
-
     def step(self, action):
         if self.scheduling_mode == "machine":
             location_id = action // self.num_jobs + self.num_inputpoints
             job_id = action % self.num_jobs
-
-            if not job_id in self.monitor.queue_for_machine_scheduling.keys():
-                print(0)
 
             job = self.monitor.remove_from_queue(job_id, scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
@@ -103,7 +99,7 @@ class Factory:
 
             job = self.monitor.remove_from_queue(scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
-            crane = self.resource_id_to_name[crane_id]
+            crane = self.resource_id_to_name.get(crane_id)
 
             self.locations[current_location].call_for_crane_scheduling[job.name].succeed(crane)
             self.scheduling_mode = "machine"
@@ -120,7 +116,7 @@ class Factory:
                     self.sim_env.step()
                 break
 
-            if len(self.monitor.operations_done) == len(self.df_operations):
+            if len(self.monitor.jobs_after_system) == self.num_jobs:
                 done = True
                 break
 
@@ -183,28 +179,31 @@ class Factory:
                     if category == 0:
                         continue
                     else:
-                        flag_availability = ~location.check_status()
-                        flag_accesibility = (current_coord[0] < self.safety_margin
-                                             and target_coord[0] < self.x_max - self.safety_margin) or \
-                                            (current_coord[0] > self.x_max - self.safety_margin - 1
-                                             and target_coord[0] > self.safety_margin - 1)
+                        flag_availability = ~location.check_status() or job.current_location == name
+                        flag_accessibility = ~((current_coord[0] < self.safety_margin
+                                                and target_coord[0] > self.x_max - self.safety_margin) or \
+                                               (current_coord[0] > self.x_max - self.safety_margin
+                                                and target_coord[0] < self.safety_margin))
 
                         if category == 1:
                             if operation is not None:
                                 flag_eligibility = int(operation.get_processing_time(local_id)) != 0
                                 mask_machine[global_id - self.num_inputpoints, job.id] \
-                                    = flag_eligibility & flag_availability & flag_accesibility
+                                    = flag_eligibility & flag_availability & flag_accessibility
                             else:
                                 continue
                         elif category == 2:
-                            if operation.id in self.monitor.operations_waiting.keys():
-                                continue
-                            else:
+                            if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
                                 mask_buffer[global_id - self.num_inputpoints, job.id] \
-                                    = flag_availability & flag_accesibility
+                                    = flag_availability & flag_accessibility
+                            else:
+                                continue
                         elif category == 3:
-                            mask_output[global_id - self.num_inputpoints, job.id] \
-                                = flag_availability & flag_accesibility
+                            if operation is None:
+                                mask_output[global_id - self.num_inputpoints, job.id] \
+                                    = flag_availability & flag_accessibility
+                            else:
+                                continue
                         else:
                             continue
 
@@ -214,16 +213,20 @@ class Factory:
                 mask = mask_buffer
 
         else:
-            mask = np.zeros(self.num_cranes, dtype=bool)
+            mask = np.zeros(self.num_cranes + 1, dtype=bool)
 
             job = self.monitor.queue_for_crane_scheduling
-            location_name = job.current_location
-            location_coord = self.locations[location_name].coord
 
-            for crane in self.resources.values():
-                if ((crane.id == 0) and (location_coord[0] < self.x_max - self.safety_margin)) or \
-                        ((crane.id == 1) and (location_coord[0] > self.safety_margin - 1)):
-                    mask[crane.id] = 1
+            if job.current_location == job.next_location:
+                mask[self.num_cranes] = 1
+            else:
+                location_name = job.current_location
+                location_coord = self.locations[location_name].coord
+
+                for crane in self.resources.values():
+                    if ((crane.id == 0) and (location_coord[0] < self.x_max - self.safety_margin)) or \
+                            ((crane.id == 1) and (location_coord[0] > self.safety_margin - 1)):
+                        mask[crane.id] = 1
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
 
@@ -255,7 +258,7 @@ class Factory:
             if crane_scheduling_algorithm == "RL":
                 pass
             else:
-                data = np.zeros(self.num_cranes)
+                data = np.zeros(self.num_cranes + 1)
 
                 if crane_scheduling_algorithm == "SETT":
                     pass
