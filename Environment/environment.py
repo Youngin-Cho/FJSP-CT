@@ -88,6 +88,9 @@ class Factory:
             location_id = action // self.num_jobs + self.num_inputpoints
             job_id = action % self.num_jobs
 
+            if not job_id in self.monitor.queue_for_machine_scheduling.keys():
+                print(0)
+
             job = self.monitor.remove_from_queue(job_id, scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
             next_location = self.location_id_to_name[location_id]
@@ -110,7 +113,11 @@ class Factory:
 
         done = False
 
+        cnt = 0
         while True:
+            if cnt > 100:
+                print(0)
+
             if self.monitor.machine_scheduling or self.monitor.crane_scheduling:
                 while self.sim_env.now in [event[0] for event in self.sim_env._queue]:
                     self.sim_env.step()
@@ -121,6 +128,7 @@ class Factory:
                 break
 
             self.sim_env.step()
+            cnt += 1
 
         next_state = self._get_state()
         reward = self._calculate_reward()

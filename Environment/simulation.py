@@ -114,7 +114,10 @@ class Crane:
                 self.idle_time += waiting_finish - waiting_start
 
                 if target_coord is not None:
-                    yield self.env.process(self._moving(target_coord))
+                    self.target_coord = target_coord
+
+                    yield self.env.process(self._moving())
+
                     self.opposite.update_location(self.env.now)
                     self.update_location(self.env.now)
                     self.target_coord = (-1.0, -1.0)
@@ -122,24 +125,27 @@ class Crane:
                 self.idle = False
 
                 job_id, current_location, next_location = self.queue.pop(0)
+
                 location = self.locations[current_location]
 
                 self.status = "loading"
                 self.working_start = self.env.now
                 self.target_coord = location.coord
                 # self.from_location = self.location_mapping[self.current_coord].name
-                self.to_location = self.location_mapping[self.target_coord].name
+                self.to_location = location.name
 
-                yield self.env.process(self._moving(location.coord))
+                yield self.env.process(self._moving())
                 self.job = self.locations[self.to_location].get(job_id)
+
+                location = self.locations[next_location]
 
                 self.status = "unloading"
                 self.working_start = self.env.now
-                self.target_coord = self.locations[self.job.next_location].coord
+                self.target_coord = location.coord
                 # self.from_location = self.location_mapping[self.current_coord].name
-                self.to_location = self.location_mapping[self.target_coord].name
+                self.to_location = location.name
 
-                yield self.env.process(self._moving(location.coord))
+                yield self.env.process(self._moving())
                 self.locations[self.to_location].put(self.job)
 
                 self.target_coord = (-1.0, -1.0)
@@ -147,14 +153,12 @@ class Crane:
                 self.to_location = None
                 self.job = None
 
-    def _moving(self, target_coord):
-        self.target_coord = target_coord
-
+    def _moving(self):
         added_travel_time = 0.0
         while True:
             avoidance, safety_xcoord = self._check_interference()
             if avoidance:
-                self.safety_coord = (safety_xcoord, target_coord[1])
+                self.safety_coord = (safety_xcoord, self.target_coord[1])
                 opposite_direction = True if np.sign(safety_xcoord - self.current_coord[0]) \
                                              != np.sign(self.target_coord[0] - self.current_coord[0]) else False
                 travel_time = self.get_travel_time(self.safety_coord)
