@@ -83,19 +83,18 @@ class Factory:
                           "machine": self.num_machines,
                           "crane": self.num_cranes}
 
+        self.state = None
+
     def step(self, action):
         if self.scheduling_mode == "machine":
             location_id = action // self.num_jobs + self.num_inputpoints
             job_id = action % self.num_jobs
 
-            if not job_id in self.monitor.queue_for_machine_scheduling.keys():
-                print(0)
-
             job = self.monitor.remove_from_queue(job_id, scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
             next_location = self.location_id_to_name[location_id]
 
-            self.locations[current_location].call_for_machine_scheduling[job.name].succeed(next_location)
+            self.locations[current_location].call_for_machine_scheduling[job.id].succeed(next_location)
             self.scheduling_mode = "crane"
         else:
             crane_id = action
@@ -104,7 +103,7 @@ class Factory:
             current_location = job.current_location
             crane = self.resource_id_to_name.get(crane_id)
 
-            self.locations[current_location].call_for_crane_scheduling[job.name].succeed(crane)
+            self.locations[current_location].call_for_crane_scheduling[job.id].succeed(crane)
             self.scheduling_mode = "machine"
 
             mask = self._get_mask()
@@ -121,7 +120,12 @@ class Factory:
             if self.monitor.machine_scheduling or self.monitor.crane_scheduling:
                 while self.sim_env.now in [event[0] for event in self.sim_env._queue]:
                     self.sim_env.step()
-                break
+
+                mask = self._get_mask()
+                if mask.any():
+                    break
+                else:
+                    self.monitor.machine_scheduling = False
 
             if len(self.monitor.jobs_after_system) == self.num_jobs:
                 done = True
@@ -281,6 +285,8 @@ class Factory:
 
         state = State()
         state.update(data, mask)
+
+        self.state = state
 
         return state
 
