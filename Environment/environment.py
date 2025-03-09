@@ -115,6 +115,7 @@ class Factory:
         cnt = 0
         while True:
             if cnt > 100:
+                df = self.monitor.get_logs()
                 print(0)
 
             if self.monitor.machine_scheduling or self.monitor.crane_scheduling:
@@ -236,8 +237,8 @@ class Factory:
                 location_coord = self.locations[location_name].coord
 
                 for crane in self.resources.values():
-                    if ((crane.id == 0) and (location_coord[0] < self.x_max - self.safety_margin)) or \
-                            ((crane.id == 1) and (location_coord[0] > self.safety_margin - 1)):
+                    if ((crane.id == 0) and (location_coord[0] <= self.x_max - self.safety_margin)) or \
+                            ((crane.id == 1) and (location_coord[0] >= self.safety_margin)):
                         mask[crane.id] = 1
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
@@ -369,7 +370,7 @@ if __name__ == "__main__":
     agent_cs = CraneSchedulingHeuristic()
 
     data_src = DataGenerator()
-    env = Factory(data_src, algorithm=("RAND","RAND"))
+    env = Factory(data_src, algorithm=("RAND","RAND"), record_events=True)
 
     step = 0
 
