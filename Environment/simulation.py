@@ -824,6 +824,6 @@ class Monitor:
         df_log['Resource'] = self.resource
 
         if file_path is not None:
-            df_log.to_excel(file_path, index=False)
+            df_log.to_excel(file_path, sheet_name="logs", index=False)
 
         return df_log
