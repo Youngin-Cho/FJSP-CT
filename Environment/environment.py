@@ -351,9 +351,9 @@ class Factory:
 
         for crane in resources.values():
             if crane.id == 0:
-                opposite_crane = resources["Crane-1"]
+                opposite_crane = resources["C-1"]
             else:
-                opposite_crane = resources["Crane-0"]
+                opposite_crane = resources["C-0"]
             crane.set_opposite_crane(opposite_crane)
 
         return sim_env, jobs, source, sink, locations, resources, monitor

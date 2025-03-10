@@ -107,13 +107,13 @@ class DataGenerator:
 
             category = self.division[bay_index]
             if category == 0:
-                name = "InputPoint-%d" % local_index[category]
+                name = "I-%d" % local_index[category]
             elif category == 1:
-                name = "Machine-%d" % local_index[category]
+                name = "M-%d" % local_index[category]
             elif category == 2:
-                name = "Buffer-%d" % local_index[category]
+                name = "B-%d" % local_index[category]
             else:
-                name = "OutputPoint-%d" % local_index[category]
+                name = "O-%d" % local_index[category]
 
             x_coordinate = self.x_spacing * bay_index
             y_coordinate = self.y_spacing * row_index
@@ -124,7 +124,7 @@ class DataGenerator:
             local_index[category] += 1
 
         for i in range(self.num_cranes):
-            name = "Crane-%d" % i
+            name = "C-%d" % i
             index = i
 
             x_velocity = self.x_velocity
