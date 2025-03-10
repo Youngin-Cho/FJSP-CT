@@ -56,30 +56,27 @@ class Crane:
         ycoord = self.current_coord[1]
         time_elapsed = time - self.update_time
 
+        flag_update = False
         if time_elapsed > 0.0:
-            if (not self.idle) and (not self.waiting):
-                if self.safety_coord[0] != -1.0:
-                    x_direction = np.sign(self.safety_coord[0] - xcoord)
-                    # x_limit = self.safety_coord[0]
-                else:
+            if self.idle:
+                if self.target_coord[0] != -1.0:
+                    flag_update = True
                     x_direction = np.sign(self.target_coord[0] - xcoord)
-                    # x_limit = self.target_coord[0]
+                    y_direction = np.sign(self.target_coord[1] - ycoord)
+            else:
+                if not self.waiting:
+                    if self.safety_coord[0] != -1.0:
+                        flag_update = True
+                        x_direction = np.sign(self.safety_coord[0] - xcoord)
+                        y_direction = np.sign(self.target_coord[1] - ycoord)
+                    else:
+                        flag_update = True
+                        x_direction = np.sign(self.target_coord[0] - xcoord)
+                        y_direction = np.sign(self.target_coord[1] - ycoord)
 
-                y_direction = np.sign(self.target_coord[1] - ycoord)
-                # y_limit = self.target_coord[1]
-
+            if flag_update:
                 xcoord = xcoord + time_elapsed * self.x_velocity * x_direction
                 ycoord = ycoord + time_elapsed * self.y_velocity * y_direction
-
-                # if x_direction == 1:
-                #     x_coord = np.clip(xcoord, a_min=1, a_max=x_limit)
-                # else:
-                #     x_coord = np.clip(xcoord, a_min=x_limit, a_max=self.max_x)
-                #
-                # if y_direction == 1:
-                #     y_coord = np.clip(ycoord, a_min=1, a_max=y_limit)
-                # else:
-                #     y_coord = np.clip(ycoord, a_min=y_limit, a_max=self.max_y)
 
         self.update_time = time
         self.current_coord = (xcoord, ycoord)
@@ -101,8 +98,6 @@ class Crane:
 
                 waiting_start = self.env.now
                 if self.monitor.record_events:
-                    if self.location_mapping.get(self.current_coord) is None:
-                        print(0)
                     self.monitor.record(self.env.now, event="Waiting_Started",
                                         location=self.location_mapping[self.current_coord].name, resource=self.name)
 
@@ -111,8 +106,6 @@ class Crane:
 
                 waiting_finish = self.env.now
                 if self.monitor.record_events:
-                    if self.location_mapping.get(self.current_coord) is None:
-                        print(0)
                     self.monitor.record(self.env.now, event="Waiting_Finished",
                                         location=self.location_mapping[self.current_coord].name, resource=self.name)
 
@@ -123,16 +116,9 @@ class Crane:
                     yield self.env.process(self._moving())
                     self.target_coord = (-1.0, -1.0)
 
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.name, self.current_coord, self.update_time))
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.opposite.name, self.opposite.current_coord, self.opposite.update_time))
                 self.opposite.update_location(self.env.now)
                 self.update_location(self.env.now)
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.name, self.current_coord, self.update_time))
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.opposite.name, self.opposite.current_coord, self.opposite.update_time))
+
             else:
                 self.idle = False
 
@@ -177,26 +163,15 @@ class Crane:
                 travel_time_opposite = self.opposite.get_travel_time(self.opposite.target_coord)
 
                 if self.monitor.record_events:
-                    if self.location_mapping.get(self.current_coord) is None:
-                        print(0)
                     self.monitor.record(self.env.now, event="Move_from",
                                         location=self.location_mapping[self.current_coord].name, resource=self.name)
 
                 yield self.env.timeout(travel_time)
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.name, self.current_coord, self.update_time))
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.opposite.name, self.opposite.current_coord, self.opposite.update_time))
+
                 self.opposite.update_location(self.env.now)
                 self.update_location(self.env.now)
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.name, self.current_coord, self.update_time))
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.opposite.name, self.opposite.current_coord, self.opposite.update_time))
 
                 if self.monitor.record_events:
-                    if self.location_mapping.get(self.current_coord) is None:
-                        print(0)
                     self.monitor.record(self.env.now, event="Move_to",
                                         location=self.location_mapping[self.current_coord].name, resource=self.name)
 
@@ -213,29 +188,17 @@ class Crane:
                     self.waiting = True
                     avoiding_start = self.env.now
                     if self.monitor.record_events:
-                        if self.location_mapping.get(self.current_coord) is None:
-                            print(0)
                         self.monitor.record(self.env.now, event="Avoiding_wait_start",
                                             location=self.location_mapping[self.current_coord].name, resource=self.name)
 
                     yield self.env.timeout(travel_time_opposite - travel_time)
-                    print("name: {0} | current_location: {1} | update_time: {2}"
-                          .format(self.name, self.current_coord, self.update_time))
-                    print("name: {0} | current_location: {1} | update_time: {2}"
-                          .format(self.opposite.name, self.opposite.current_coord, self.opposite.update_time))
+
                     self.opposite.update_location(self.env.now, on_location=True)
                     self.update_location(self.env.now)
-                    print("name: {0} | current_location: {1} | update_time: {2}"
-                          .format(self.name, self.current_coord, self.update_time))
-                    print("name: {0} | current_location: {1} | update_time: {2}"
-                          .format(self.opposite.name, self.opposite.current_coord, self.opposite.update_time))
 
                     self.waiting = False
                     avoiding_finish = self.env.now
                     if self.monitor.record_events:
-                        if self.location_mapping.get(self.current_coord) is None:
-                            print(0)
-
                         self.monitor.record(self.env.now, event="Avoiding_wait_finish",
                                             location=self.location_mapping[self.current_coord].name, resource=self.name)
 
@@ -266,20 +229,11 @@ class Crane:
                             self.opposite.waiting_event.succeed(target_coord_opposite)
 
                 yield self.env.timeout(travel_time)
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.name, self.current_coord, self.update_time))
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.opposite.name, self.opposite.current_coord, self.opposite.update_time))
+
                 self.opposite.update_location(self.env.now)
                 self.update_location(self.env.now, on_location=True)
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.name, self.current_coord, self.update_time))
-                print("name: {0} | current_location: {1} | update_time: {2}"
-                      .format(self.opposite.name, self.opposite.current_coord, self.opposite.update_time))
 
                 if self.monitor.record_events:
-                    if self.location_mapping.get(self.current_coord) is None:
-                        print(0)
                     self.monitor.record(self.env.now, event="Move_to",
                                         location=self.location_mapping[self.current_coord].name, resource=self.name)
 

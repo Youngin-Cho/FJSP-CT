@@ -112,12 +112,7 @@ class Factory:
 
         done = False
 
-        cnt = 0
         while True:
-            if cnt > 100:
-                df = self.monitor.get_logs()
-                print(0)
-
             if self.monitor.machine_scheduling or self.monitor.crane_scheduling:
                 while self.sim_env.now in [event[0] for event in self.sim_env._queue]:
                     self.sim_env.step()
@@ -130,10 +125,10 @@ class Factory:
 
             if len(self.monitor.jobs_after_system) == self.num_jobs:
                 done = True
+                self.monitor.get_logs("./temp.xlsx")
                 break
 
             self.sim_env.step()
-            cnt += 1
 
         next_state = self._get_state()
         reward = self._calculate_reward()
@@ -233,12 +228,14 @@ class Factory:
             if job.current_location == job.next_location:
                 mask[self.num_cranes] = 1
             else:
-                location_name = job.current_location
-                location_coord = self.locations[location_name].coord
+                current_location_coord = self.locations[job.current_location].coord
+                next_location_coord = self.locations[job.next_location].coord
 
                 for crane in self.resources.values():
-                    if ((crane.id == 0) and (location_coord[0] <= self.x_max - self.safety_margin)) or \
-                            ((crane.id == 1) and (location_coord[0] >= self.safety_margin)):
+                    if ((crane.id == 0) and (current_location_coord[0] <= self.x_max - self.safety_margin)
+                        and (next_location_coord[0] <= self.x_max - self.safety_margin)) or \
+                            ((crane.id == 1) and (current_location_coord[0] >= self.safety_margin)
+                             and (current_location_coord[0] >= self.safety_margin)):
                         mask[crane.id] = 1
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
