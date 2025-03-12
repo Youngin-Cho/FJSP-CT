@@ -12,8 +12,6 @@ class Crane:
         self.safety_margin = safety_margin
         self.x_velocity = x_velocity
         self.y_velocity = y_velocity
-        # self.max_x = max_x
-        # self.max_y = max_y
 
         self.opposite = None
         self.queue = []
@@ -95,6 +93,23 @@ class Crane:
             if len(self.queue) == 0:
                 self.idle = True
                 self.status = "waiting"
+
+                if not self.opposite.idle:
+                    xcoord = self.current_coord[0]
+                    xcoord_opposite = self.opposite.target_coord[0]
+
+                    if self.id == 0 and xcoord > xcoord_opposite - self.safety_margin:
+                        flag = True
+                        self.target_coord = (xcoord_opposite - self.safety_margin, self.current_coord[1])
+                    elif self.id == 1 and xcoord < xcoord_opposite + self.safety_margin:
+                        flag = True
+                        self.target_coord = (xcoord_opposite + self.safety_margin, self.current_coord[1])
+                    else:
+                        flag = False
+
+                    if flag:
+                        yield self.env.process(self._moving())
+                        self.target_coord = (-1.0, -1.0)
 
                 waiting_start = self.env.now
                 if self.monitor.record_events:
