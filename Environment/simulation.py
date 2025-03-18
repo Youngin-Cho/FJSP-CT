@@ -25,7 +25,7 @@ class Crane:
         self.waiting = False
         self.blocked = False
         self.blocked_expected = False
-        self.priority = False
+        self.priority_queue = []
         self.status = "waiting" # "loading", "unloading"
         self.job = None
         self.to_location = None
@@ -154,6 +154,9 @@ class Crane:
                         flag = False
 
                     if flag:
+                        self.priority_queue.append(self.name)
+                        self.opposite.priority_queue.append(self.name)
+
                         yield self.env.process(self._moving())
                         self.target_coord = (-1.0, -1.0)
 
@@ -174,6 +177,9 @@ class Crane:
                     self.idle_time += waiting_finish - waiting_start
 
                     if target_coord is not None:
+                        self.priority_queue.append(self.name)
+                        self.opposite.priority_queue.append(self.name)
+
                         self.target_coord = target_coord
                         yield self.env.process(self._moving())
                         self.target_coord = (-1.0, -1.0)
@@ -200,6 +206,9 @@ class Crane:
                 self.target_coord = location.coord
                 self.to_location = location.name
 
+                self.priority_queue.append(self.name)
+                self.opposite.priority_queue.append(self.name)
+
                 yield self.env.process(self._moving())
                 self.job = self.locations[self.to_location].get(job_id)
 
@@ -207,6 +216,9 @@ class Crane:
                     self.monitor.record(self.env.now, event="Get",
                                         location=self.locations[self.to_location].name,
                                         resource=self.name, item=self.job.name)
+
+                self.priority_queue.append(self.name)
+                self.opposite.priority_queue.append(self.name)
 
                 location = self.locations[next_location]
 
@@ -225,7 +237,6 @@ class Crane:
                 self.target_coord = (-1.0, -1.0)
                 self.to_location = None
                 self.job = None
-                self.current_working_order = None
 
     def _moving(self):
         added_travel_time = 0.0
@@ -336,10 +347,14 @@ class Crane:
                 if added_travel_time > 0.0:
                     self.avoiding_time += added_travel_time
 
+                self.priority_queue.remove(self.name)
+                self.opposite.priority_queue.remove(self.name)
+
                 if self.status == "loading":
                     self.empty_travel_time += (travel_time - added_travel_time)
                     self.status = "unloading"
                 elif self.status == "unloading":
+                    self.current_working_order = None
                     self.status = "waiting"
 
                 break
@@ -439,14 +454,9 @@ class Crane:
         if self.opposite.idle or self.opposite.blocked:
             priority_flag = True
         else:
-            if self.working_start is not None:
-                if self.working_start < self.opposite.working_start:
-                    priority_flag = True
-                elif self.working_start == self.opposite.working_start:
-                    if not self.opposite.priority:
-                        priority_flag = True
-
-        self.priority = priority_flag
+            idx = self.priority_queue.index(self.name)
+            if idx == 0:
+                priority_flag = True
 
         return priority_flag
 

@@ -92,9 +92,6 @@ class Factory:
             location_id = action // self.num_jobs + self.num_inputpoints
             job_id = action % self.num_jobs
 
-            if not job_id in self.monitor.queue_for_machine_scheduling.keys():
-                print(0)
-
             job = self.monitor.remove_from_queue(job_id, scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
             next_location = self.location_id_to_name[location_id]
@@ -217,8 +214,13 @@ class Factory:
                         if category == 1 and job.current_location != name:
                             for crane in self.resources.values():
                                 start = job.current_location
-                                queue_from = [working_order[1] for working_order in crane.queue]
-                                queue_to = [working_order[2] for working_order in crane.queue]
+                                queue_from = []
+                                queue_to = []
+
+                                for temp in crane.queue:
+                                    if self.locations[temp[1]].category == 1 and self.locations[temp[2]].category == 1:
+                                        queue_from.append(temp[1])
+                                        queue_to.append(temp[2])
 
                                 new_start = location.name
                                 while new_start in queue_from:
@@ -233,23 +235,38 @@ class Factory:
                                     break
 
                         flag_not_blocked = True
-                        if category == 1:
+                        if category == 1 and job.current_location != name:
                             for crane in self.resources.values():
                                 if crane.current_working_order is not None:
                                     queue = ([crane.current_working_order] + crane.queue[:]
                                              + [(job.id, job.current_location, name)])
+                                    exclude_first = True if crane.status == "unloading" else False
                                 else:
                                     queue = crane.queue[:] + [(job.id, job.current_location, name)]
+                                    exclude_first = False
 
                                 if crane.opposite.current_working_order is not None:
                                     queue_opposite = [crane.opposite.current_working_order] + crane.opposite.queue
+                                    exclude_first_opposite = True if crane.opposite.status == "unloading" else False
                                 else:
                                     queue_opposite = crane.opposite.queue[:]
+                                    exclude_first_opposite = False
 
-                                queue_from = set([temp[1] for temp in queue if self.locations[temp[1]].category == 1])
+                                if exclude_first:
+                                    queue_from = set([temp[1] for temp in queue[1:]
+                                                      if self.locations[temp[1]].category == 1])
+                                else:
+                                    queue_from = set([temp[1] for temp in queue
+                                                      if self.locations[temp[1]].category == 1])
+
+                                if exclude_first_opposite:
+                                    queue_from_opposite = set([temp[1] for temp in queue_opposite[1:]
+                                                               if self.locations[temp[1]].category == 1])
+                                else:
+                                    queue_from_opposite = set([temp[1] for temp in queue_opposite
+                                                               if self.locations[temp[1]].category == 1])
+
                                 queue_to = set([temp[2] for temp in queue if self.locations[temp[2]].category == 1])
-                                queue_from_opposite = set([temp[1] for temp in queue_opposite
-                                                           if self.locations[temp[1]].category == 1])
                                 queue_to_opposite = set([temp[2] for temp in queue_opposite
                                                          if self.locations[temp[2]].category == 1])
 
@@ -349,9 +366,33 @@ class Factory:
                                 if operation is None:
                                     data[location.global_id - self.num_inputpoints, job.id] = 1
                 elif machine_scheduling_algorithm == "MOR":
-                    pass
+                    for job in self.monitor.queue_for_machine_scheduling.values():
+                        num_remaining_ops = len(job.operations) - job.step
+                        for location in self.locations.values():
+                            if location.category == 1:
+                                if num_remaining_ops > 0:
+                                    data[location.global_id - self.num_inputpoints, job.id] = num_remaining_ops
+                            elif location.category == 2:
+                                data[location.global_id - self.num_inputpoints, job.id] = 1
+                            elif location.category == 3:
+                                if num_remaining_ops == 0:
+                                    data[location.global_id - self.num_inputpoints, job.id] = 1
                 elif machine_scheduling_algorithm == "MWKR":
-                    pass
+                    for job in self.monitor.queue_for_machine_scheduling.values():
+                        if job.step < len(job.operations):
+                            remaining_work = np.sum([np.mean(operation.options[operation.options != 0])
+                                                     for operation in job.operations[job.step:]])
+                        else:
+                            remaining_work = 0.0
+                        for location in self.locations.values():
+                            if location.category == 1:
+                                if remaining_work > 0.0:
+                                    data[location.global_id - self.num_inputpoints, job.id] = remaining_work
+                            elif location.category == 2:
+                                data[location.global_id - self.num_inputpoints, job.id] = 1
+                            elif location.category == 3:
+                                if remaining_work == 0.0:
+                                    data[location.global_id - self.num_inputpoints, job.id] = 1
                 elif machine_scheduling_algorithm == "RAND":
                     data[:, :] = 1.0
         else:
