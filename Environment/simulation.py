@@ -232,6 +232,13 @@ class Crane:
 
         while True:
             avoidance, safety_xcoord = self._check_interference()
+
+            if self.monitor.record_events:
+                self.monitor.record(self.env.now, event="Check_Priority",
+                                    location=self.location_mapping[self.current_coord].name, resource=self.name,
+                                    item=self.job.name if self.job is not None else None, blocked=self.blocked,
+                                    avoidance=avoidance, destination = self.to_location)
+
             if avoidance:
                 self.safety_coord = (safety_xcoord, self.target_coord[1])
                 opposite_direction = True if np.sign(safety_xcoord - self.current_coord[0]) \
@@ -590,7 +597,7 @@ class InputPoint:
 
             if self.monitor.record_events:
                 self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called",
-                                    resource=crane_name, status=crane.idle, destination=job.next_location,
+                                    resource=crane_name, idle=crane.idle, destination=job.next_location,
                                     queue=crane.queue[:])
 
             if crane.idle and (not crane.waiting_event.triggered):
@@ -655,6 +662,7 @@ class Machine:
 
     def reserve_job(self, job_id):
         if not job_id in self.jobs_after_process.keys():
+            self.monitor.get_logs("./temp.xlsx")
             print(0)
         self.jobs_after_process[job_id].in_transportation = True
 
@@ -733,7 +741,7 @@ class Machine:
 
                 if self.monitor.record_events:
                     self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called",
-                                        resource=crane_name, status=crane.idle, destination=job.next_location,
+                                        resource=crane_name, idle=crane.idle, destination=job.next_location,
                                         queue=crane.queue[:])
 
                 if not reassign:
@@ -808,24 +816,36 @@ class Buffer:
     def _wait(self, job):
         job.in_transportation = False
         operation = job.get_current_operation()
-        self.monitor.operations_waiting[operation.id] = operation
+
+        if operation is not None:
+            self.monitor.operations_waiting[operation.id] = operation
 
         if self.monitor.record_events:
-            self.monitor.record(self.env.now, location=self.name, job=job.name,
-                                operation=operation.name, event="Waiting Started")
+            if operation is not None:
+                self.monitor.record(self.env.now, location=self.name, job=job.name,
+                                    operation=operation.name, event="Waiting Started")
+            else:
+                self.monitor.record(self.env.now, location=self.name, job=job.name,
+                                    event="Waiting Started")
 
-        operation.waiting_start = self.env.now
-        # self.monitor.add_to_queue(job, scheduling_mode="machine")
+        if operation is not None:
+            operation.waiting_start = self.env.now
+
         self.monitor.set_scheduling_flag(scheduling_mode="machine")
         self.call_for_machine_scheduling[job.id] = self.env.event()
         location_name = yield self.call_for_machine_scheduling[job.id]
         del self.call_for_machine_scheduling[job.id]
 
-        del self.monitor.operations_waiting[operation.id]
+        if operation is not None:
+            del self.monitor.operations_waiting[operation.id]
 
         if self.monitor.record_events:
-            self.monitor.record(self.env.now, location=self.name, job=job.name,
-                                operation=operation.name, event="Waiting Finished")
+            if operation is not None:
+                self.monitor.record(self.env.now, location=self.name, job=job.name,
+                                    operation=operation.name, event="Waiting Finished")
+            else:
+                self.monitor.record(self.env.now, location=self.name, job=job.name,
+                                    event="Waiting Finished")
 
         del self.jobs_in_process[job.id]
         self.jobs_after_process[job.id] = job
@@ -849,7 +869,7 @@ class Buffer:
 
             if self.monitor.record_events:
                 self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called",
-                                    resource=crane_name, status=crane.idle, destination=job.next_location,
+                                    resource=crane_name, idle=crane.idle, destination=job.next_location,
                                     queue=crane.queue[:])
 
             if crane.idle and (not crane.waiting_event.triggered):
@@ -949,11 +969,12 @@ class Monitor:
         self.next_location = []
         self.event = []
         self.resource = []
-        self.status = []
+        self.idle = []
+        self.blocked = []
+        self.avoidance = []
         self.item = []
         self.destination = []
         self.queue = []
-        self.info = []
 
     def set_scheduling_flag(self, scheduling_mode='machine'):
         if scheduling_mode == 'machine':
@@ -987,7 +1008,7 @@ class Monitor:
             return job
 
     def record(self, time, location=None, job=None, operation=None, next_location=None, event=None,
-               resource=None, status=None, item=None, destination=None, queue=None):
+               resource=None, idle=None, blocked=None, avoidance=None, item=None, destination=None, queue=None):
         self.time.append(time)
         self.location.append(location)
         self.job.append(job)
@@ -995,14 +1016,16 @@ class Monitor:
         self.next_location.append(next_location)
         self.event.append(event)
         self.resource.append(resource)
-        self.status.append(status)
+        self.idle.append(idle)
+        self.blocked.append(blocked)
+        self.avoidance.append(avoidance)
         self.item.append(item)
         self.destination.append(destination)
         self.queue.append(queue)
 
     def get_logs(self, file_path=None):
         df_log = pd.DataFrame(columns=['Time', 'Location', 'Job', 'Operation', 'Next_Location', 'Event',
-                                       'Resource', 'Status', 'Item', 'Destination', 'Queue'])
+                                       'Resource', 'Idle', 'Blocked', 'Avoidance', 'Item', 'Destination', 'Queue'])
         df_log['Time'] = self.time
         df_log['Location'] = self.location
         df_log['Job'] = self.job
@@ -1010,7 +1033,9 @@ class Monitor:
         df_log['Next_Location'] = self.next_location
         df_log['Event'] = self.event
         df_log['Resource'] = self.resource
-        df_log['Status'] = self.status
+        df_log['Idle'] = self.idle
+        df_log['Blocked'] = self.blocked
+        df_log['Avoidance'] = self.avoidance
         df_log['Item'] = self.item
         df_log['Destination'] = self.destination
         df_log['Queue'] = self.queue

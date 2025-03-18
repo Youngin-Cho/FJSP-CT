@@ -3,6 +3,7 @@ import simpy
 import copy
 import numpy as np
 import pandas as pd
+from tensorflow.python.keras.engine.compile_utils import create_pseudo_input_names
 
 from torch_geometric.data import HeteroData
 from Environment.data import DataGenerator
@@ -90,6 +91,9 @@ class Factory:
         if self.scheduling_mode == "machine":
             location_id = action // self.num_jobs + self.num_inputpoints
             job_id = action % self.num_jobs
+
+            if not job_id in self.monitor.queue_for_machine_scheduling.keys():
+                print(0)
 
             job = self.monitor.remove_from_queue(job_id, scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
@@ -209,42 +213,59 @@ class Factory:
                                                   (current_coord[0] > self.x_max - self.safety_margin
                                                    and target_coord[0] < self.safety_margin))
 
-                        flag_cycle = True
-                        if category == 1 and flag_availability:
-                            start = job.current_location
-                            queue_from = []
-                            queue_to = []
+                        flag_not_cycled = True
+                        if category == 1 and job.current_location != name:
                             for crane in self.resources.values():
-                                queue_from += [working_order[1] for working_order in crane.queue]
-                                queue_to += [working_order[2] for working_order in crane.queue]
+                                start = job.current_location
+                                queue_from = [working_order[1] for working_order in crane.queue]
+                                queue_to = [working_order[2] for working_order in crane.queue]
 
-                            new_start = location.name
-                            while new_start in queue_from:
-                                index = queue_from.index(new_start)
-                                new_start = queue_to[index]
+                                new_start = location.name
+                                while new_start in queue_from:
+                                    index = queue_from.index(new_start)
+                                    new_start = queue_to[index]
 
-                                if new_start == start:
-                                    flag_cycle = False
+                                    if new_start == start:
+                                        flag_not_cycled = False
+                                        break
+
+                                if not flag_not_cycled:
                                     break
 
                         flag_not_blocked = True
                         if category == 1:
                             for crane in self.resources.values():
-                                if crane.blocked or crane.blocked_expected:
-                                    if crane.current_working_order is not None:
-                                        from_locations = [crane.current_working_order[1]]
-                                    else:
-                                        from_locations = []
-                                    from_locations += [temp[1] for temp in crane.queue]
-                                    if name in from_locations:
-                                        print(self.sim_env.now, job.name, crane.name, name, from_locations)
-                                        flag_not_blocked = False
+                                if crane.current_working_order is not None:
+                                    queue = ([crane.current_working_order] + crane.queue[:]
+                                             + [(job.id, job.current_location, name)])
+                                else:
+                                    queue = crane.queue[:] + [(job.id, job.current_location, name)]
+
+                                if crane.opposite.current_working_order is not None:
+                                    queue_opposite = [crane.opposite.current_working_order] + crane.opposite.queue
+                                else:
+                                    queue_opposite = crane.opposite.queue[:]
+
+                                queue_from = set([temp[1] for temp in queue if self.locations[temp[1]].category == 1])
+                                queue_to = set([temp[2] for temp in queue if self.locations[temp[2]].category == 1])
+                                queue_from_opposite = set([temp[1] for temp in queue_opposite
+                                                           if self.locations[temp[1]].category == 1])
+                                queue_to_opposite = set([temp[2] for temp in queue_opposite
+                                                         if self.locations[temp[2]].category == 1])
+
+                                intersection1 = len(set.intersection(queue_to, queue_from_opposite)) > 0
+                                intersection2 = len(set.intersection(queue_from, queue_to_opposite)) > 0
+
+                                if intersection1 and intersection2:
+                                    flag_not_blocked = False
+                                    break
 
                         if category == 1:
                             if operation is not None:
                                 flag_eligibility = int(operation.get_processing_time(local_id)) != 0
                                 mask_machine[global_id - self.num_inputpoints, job.id] \
-                                    = flag_eligibility & flag_availability & flag_accessibility & flag_cycle & flag_not_blocked
+                                    = (flag_eligibility & flag_availability & flag_accessibility
+                                       & flag_not_cycled & flag_not_blocked)
                             else:
                                 continue
                         elif category == 2:
@@ -253,7 +274,7 @@ class Factory:
                             else:
                                 if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
                                     mask_buffer[global_id - self.num_inputpoints, job.id] \
-                                        = flag_availability & flag_accessibility & flag_cycle
+                                        = flag_availability & flag_accessibility
                                 else:
                                     continue
                         elif category == 3:
@@ -283,7 +304,6 @@ class Factory:
 
                 for crane in self.resources.values():
                     flag_accessibility = False
-                    flag_not_blocked = True
                     flag_not_reversed = True
 
                     if ((crane.id == 0) and (current_location_coord[0] <= self.x_max - self.safety_margin)
@@ -292,27 +312,11 @@ class Factory:
                              and (current_location_coord[0] >= self.safety_margin)):
                         flag_accessibility = True
 
-                    queue_to = set([working_order[2] for working_order in crane.queue
-                                    if self.locations[working_order[2]].category == 1] + [job.next_location])
-                    queue_from_opposite = set([working_order[1] for working_order in crane.opposite.queue
-                                               if self.locations[working_order[1]].category == 1])
-                    blocking_expected = len(set.intersection(queue_to, queue_from_opposite)) > 0
-
-                    queue_from = set([working_order[1] for working_order in crane.queue
-                                      if self.locations[working_order[1]].category == 1] + [job.current_location])
-                    queue_to_opposite = set([working_order[2] for working_order in crane.opposite.queue
-                                             if self.locations[working_order[2]].category == 1])
-                    blocking_expected_opposite = len(set.intersection(queue_from, queue_to_opposite)) > 0
-
-                    if ((crane.blocked or blocking_expected)
-                            and (crane.opposite.blocked or blocking_expected_opposite)):
-                        flag_not_blocked = False
-
                     if crane.current_working_order is not None:
                         if crane.current_working_order[2] == job.current_location:
                             flag_not_reversed = False
 
-                    mask[crane.id] = flag_accessibility & flag_not_blocked & flag_not_reversed
+                    mask[crane.id] = flag_accessibility & flag_not_reversed
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
 
@@ -331,7 +335,19 @@ class Factory:
                 data = np.zeros((num_rows, num_columns))
 
                 if machine_scheduling_algorithm == "SPT":
-                    pass
+                    for job in self.monitor.queue_for_machine_scheduling.values():
+                        operation = job.get_current_operation()
+                        for location in self.locations.values():
+                            if location.category == 1:
+                                if operation is not None:
+                                    proctime = operation.get_processing_time(location.local_id)
+                                    data[location.global_id - self.num_inputpoints, job.id] \
+                                        = 1 / proctime if proctime > 0 else 0
+                            elif location.category == 2:
+                                data[location.global_id - self.num_inputpoints, job.id] = 1
+                            elif location.category == 3:
+                                if operation is None:
+                                    data[location.global_id - self.num_inputpoints, job.id] = 1
                 elif machine_scheduling_algorithm == "MOR":
                     pass
                 elif machine_scheduling_algorithm == "MWKR":
