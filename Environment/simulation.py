@@ -661,9 +661,6 @@ class Machine:
         return job
 
     def reserve_job(self, job_id):
-        if not job_id in self.jobs_after_process.keys():
-            self.monitor.get_logs("./temp.xlsx")
-            print(0)
         self.jobs_after_process[job_id].in_transportation = True
 
     def check_status(self):
