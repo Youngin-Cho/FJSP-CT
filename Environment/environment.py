@@ -119,7 +119,7 @@ class Factory:
             self.locations[current_location].call_for_crane_scheduling[job.id].succeed(crane)
             self.scheduling_mode = "machine"
 
-            mask = self._get_mask()
+            mask = self._get_ms_mask()
             if mask.any():
                 self.monitor.set_scheduling_flag(scheduling_mode="machine")
 
@@ -130,7 +130,12 @@ class Factory:
                 while self.sim_env.now in [event[0] for event in self.sim_env._queue]:
                     self.sim_env.step()
 
-                mask = self._get_mask()
+                if self.scheduling_mode == "machine":
+                    mask = self._get_ms_mask()
+                else:
+                    job = self.monitor.queue_for_crane_scheduling
+                    mask = self._get_cs_mask(job, job.next_location)
+
                 if mask.any():
                     self.mask = mask
                     break
@@ -179,161 +184,168 @@ class Factory:
 
         return state
 
-    def _get_mask(self):
-        if self.scheduling_mode == "machine":
-            num_rows = self.num_machines + self.num_buffers + self.num_outputpoints
-            num_columns = self.num_jobs
+    def _get_ms_mask(self):
+        num_rows = self.num_machines + self.num_buffers + self.num_outputpoints
+        num_columns = self.num_jobs
 
-            mask_machine = np.zeros((num_rows, num_columns), dtype=bool)
-            mask_buffer = np.zeros((num_rows, num_columns), dtype=bool)
-            mask_output = np.zeros((num_rows, num_columns), dtype=bool)
+        mask_machine = np.zeros((num_rows, num_columns), dtype=bool)
+        mask_buffer = np.zeros((num_rows, num_columns), dtype=bool)
+        mask_output = np.zeros((num_rows, num_columns), dtype=bool)
 
-            for job in self.monitor.queue_for_machine_scheduling.values():
-                if job.in_transportation:
+        for job in self.monitor.queue_for_machine_scheduling.values():
+            if job.in_transportation:
+                continue
+
+            operation = job.get_current_operation()
+            current_coord = self.locations[job.current_location].coord
+
+            for name, location in self.locations.items():
+                local_id = location.local_id
+                global_id = location.global_id
+                target_coord = location.coord
+                category = location.category
+
+                if category == 0:
                     continue
+                else:
+                    flag_availability = (not location.check_status()) or (job.current_location == name)
+                    flag_accessibility = not ((current_coord[0] < self.safety_margin
+                                               and target_coord[0] > self.x_max - self.safety_margin) or
+                                              (current_coord[0] > self.x_max - self.safety_margin
+                                               and target_coord[0] < self.safety_margin))
 
-                operation = job.get_current_operation()
-                current_coord = self.locations[job.current_location].coord
+                    flag_not_cycled = True
+                    if category == 1 and job.current_location != name:
+                        for crane in self.resources.values():
+                            start = job.current_location
+                            queue_from = []
+                            queue_to = []
 
-                for name, location in self.locations.items():
-                    local_id = location.local_id
-                    global_id = location.global_id
-                    target_coord = location.coord
-                    category = location.category
+                            for temp in crane.queue:
+                                if self.locations[temp[1]].category == 1 and self.locations[temp[2]].category == 1:
+                                    queue_from.append(temp[1])
+                                    queue_to.append(temp[2])
 
-                    if category == 0:
-                        continue
-                    else:
-                        flag_availability = (not location.check_status()) or (job.current_location == name)
-                        flag_accessibility = not ((current_coord[0] < self.safety_margin
-                                                   and target_coord[0] > self.x_max - self.safety_margin) or
-                                                  (current_coord[0] > self.x_max - self.safety_margin
-                                                   and target_coord[0] < self.safety_margin))
+                            new_start = location.name
+                            while new_start in queue_from:
+                                index = queue_from.index(new_start)
+                                new_start = queue_to[index]
 
-                        flag_not_cycled = True
-                        if category == 1 and job.current_location != name:
-                            for crane in self.resources.values():
-                                start = job.current_location
-                                queue_from = []
-                                queue_to = []
-
-                                for temp in crane.queue:
-                                    if self.locations[temp[1]].category == 1 and self.locations[temp[2]].category == 1:
-                                        queue_from.append(temp[1])
-                                        queue_to.append(temp[2])
-
-                                new_start = location.name
-                                while new_start in queue_from:
-                                    index = queue_from.index(new_start)
-                                    new_start = queue_to[index]
-
-                                    if new_start == start:
-                                        flag_not_cycled = False
-                                        break
-
-                                if not flag_not_cycled:
+                                if new_start == start:
+                                    flag_not_cycled = False
                                     break
 
-                        flag_not_blocked = True
-                        if category == 1 and job.current_location != name:
-                            for crane in self.resources.values():
-                                if crane.current_working_order is not None:
-                                    queue = ([crane.current_working_order] + crane.queue[:]
-                                             + [(job.id, job.current_location, name)])
-                                    exclude_first = True if crane.status == "unloading" else False
-                                else:
-                                    queue = crane.queue[:] + [(job.id, job.current_location, name)]
-                                    exclude_first = False
+                            if not flag_not_cycled:
+                                break
 
-                                if crane.opposite.current_working_order is not None:
-                                    queue_opposite = [crane.opposite.current_working_order] + crane.opposite.queue
-                                    exclude_first_opposite = True if crane.opposite.status == "unloading" else False
-                                else:
-                                    queue_opposite = crane.opposite.queue[:]
-                                    exclude_first_opposite = False
-
-                                if exclude_first:
-                                    queue_from = set([temp[1] for temp in queue[1:]
-                                                      if self.locations[temp[1]].category == 1])
-                                else:
-                                    queue_from = set([temp[1] for temp in queue
-                                                      if self.locations[temp[1]].category == 1])
-
-                                if exclude_first_opposite:
-                                    queue_from_opposite = set([temp[1] for temp in queue_opposite[1:]
-                                                               if self.locations[temp[1]].category == 1])
-                                else:
-                                    queue_from_opposite = set([temp[1] for temp in queue_opposite
-                                                               if self.locations[temp[1]].category == 1])
-
-                                queue_to = set([temp[2] for temp in queue if self.locations[temp[2]].category == 1])
-                                queue_to_opposite = set([temp[2] for temp in queue_opposite
-                                                         if self.locations[temp[2]].category == 1])
-
-                                intersection1 = len(set.intersection(queue_to, queue_from_opposite)) > 0
-                                intersection2 = len(set.intersection(queue_from, queue_to_opposite)) > 0
-
-                                if intersection1 and intersection2:
-                                    flag_not_blocked = False
-                                    break
-
-                        if category == 1:
-                            if operation is not None:
-                                flag_eligibility = int(operation.get_processing_time(local_id)) != 0
-                                mask_machine[global_id - self.num_inputpoints, job.id] \
-                                    = (flag_eligibility & flag_availability & flag_accessibility
-                                       & flag_not_cycled & flag_not_blocked)
+                    flag_not_blocked = True
+                    if category == 1 and job.current_location != name:
+                        for crane in self.resources.values():
+                            if crane.current_working_order is not None:
+                                queue = ([crane.current_working_order] + crane.queue[:]
+                                         + [(job.id, job.current_location, name)])
+                                exclude_first = True if crane.status == "unloading" else False
                             else:
-                                continue
-                        elif category == 2:
-                            if job.next_location is not None:
-                                continue
+                                queue = crane.queue[:] + [(job.id, job.current_location, name)]
+                                exclude_first = False
+
+                            if crane.opposite.current_working_order is not None:
+                                queue_opposite = [crane.opposite.current_working_order] + crane.opposite.queue
+                                exclude_first_opposite = True if crane.opposite.status == "unloading" else False
                             else:
-                                if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
-                                    mask_buffer[global_id - self.num_inputpoints, job.id] \
-                                        = flag_availability & flag_accessibility
-                                else:
-                                    continue
-                        elif category == 3:
-                            if operation is None:
-                                mask_output[global_id - self.num_inputpoints, job.id] \
+                                queue_opposite = crane.opposite.queue[:]
+                                exclude_first_opposite = False
+
+                            if exclude_first:
+                                queue_from = set([temp[1] for temp in queue[1:]
+                                                  if self.locations[temp[1]].category == 1])
+                            else:
+                                queue_from = set([temp[1] for temp in queue
+                                                  if self.locations[temp[1]].category == 1])
+
+                            if exclude_first_opposite:
+                                queue_from_opposite = set([temp[1] for temp in queue_opposite[1:]
+                                                           if self.locations[temp[1]].category == 1])
+                            else:
+                                queue_from_opposite = set([temp[1] for temp in queue_opposite
+                                                           if self.locations[temp[1]].category == 1])
+
+                            queue_to = set([temp[2] for temp in queue if self.locations[temp[2]].category == 1])
+                            queue_to_opposite = set([temp[2] for temp in queue_opposite
+                                                     if self.locations[temp[2]].category == 1])
+
+                            intersection1 = len(set.intersection(queue_to, queue_from_opposite)) > 0
+                            intersection2 = len(set.intersection(queue_from, queue_to_opposite)) > 0
+
+                            if intersection1 and intersection2:
+                                flag_not_blocked = False
+                                break
+
+                    flag_crane_availability = True
+                    cs_mask = self._get_cs_mask(job, name)
+                    if not cs_mask.any():
+                        flag_crane_availability = False
+
+                    if category == 1:
+                        if operation is not None:
+                            flag_eligibility = int(operation.get_processing_time(local_id)) != 0
+                            mask_machine[global_id - self.num_inputpoints, job.id] \
+                                = (flag_eligibility & flag_availability & flag_accessibility
+                                   & flag_not_cycled & flag_not_blocked & flag_crane_availability)
+                        else:
+                            continue
+                    elif category == 2:
+                        if job.next_location is not None:
+                            continue
+                        else:
+                            if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
+                                mask_buffer[global_id - self.num_inputpoints, job.id] \
                                     = flag_availability & flag_accessibility
                             else:
                                 continue
+                    elif category == 3:
+                        if operation is None:
+                            mask_output[global_id - self.num_inputpoints, job.id] \
+                                = flag_availability & flag_accessibility
                         else:
                             continue
+                    else:
+                        continue
 
-            if (mask_machine | mask_output).any():
-                mask = mask_machine | mask_output
-            else:
-                mask = mask_buffer
-
+        if (mask_machine | mask_output).any():
+            mask = mask_machine | mask_output
         else:
-            mask = np.zeros(self.num_cranes + 1, dtype=bool)
+            mask = mask_buffer
 
-            job = self.monitor.queue_for_crane_scheduling
+        mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
 
-            if job.current_location == job.next_location:
-                mask[self.num_cranes] = 1
-            else:
-                current_location_coord = self.locations[job.current_location].coord
-                next_location_coord = self.locations[job.next_location].coord
+        return mask
 
-                for crane in self.resources.values():
-                    flag_accessibility = False
-                    flag_not_reversed = True
 
-                    if ((crane.id == 0) and (current_location_coord[0] <= self.x_max - self.safety_margin)
-                        and (next_location_coord[0] <= self.x_max - self.safety_margin)) or \
-                            ((crane.id == 1) and (current_location_coord[0] >= self.safety_margin)
-                             and (current_location_coord[0] >= self.safety_margin)):
-                        flag_accessibility = True
+    def _get_cs_mask(self, job, next_location):
+        mask = np.zeros(self.num_cranes + 1, dtype=bool)
 
-                    if crane.current_working_order is not None:
-                        if crane.current_working_order[2] == job.current_location:
-                            flag_not_reversed = False
+        if job.current_location == next_location:
+            mask[self.num_cranes] = 1
+        else:
+            current_location_coord = self.locations[job.current_location].coord
+            next_location_coord = self.locations[next_location].coord
 
-                    mask[crane.id] = flag_accessibility & flag_not_reversed
+            for crane in self.resources.values():
+                flag_accessibility = False
+                flag_not_reversed = True
+
+                if ((crane.id == 0) and (current_location_coord[0] <= self.x_max - self.safety_margin)
+                    and (next_location_coord[0] <= self.x_max - self.safety_margin)) or \
+                        ((crane.id == 1) and (current_location_coord[0] >= self.safety_margin)
+                         and (next_location_coord[0] >= self.safety_margin)):
+                    flag_accessibility = True
+
+                if crane.current_working_order is not None:
+                    if crane.current_working_order[2] == job.current_location:
+                        flag_not_reversed = False
+
+                mask[crane.id] = flag_accessibility & flag_not_reversed
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
 
@@ -412,7 +424,11 @@ class Factory:
                 elif crane_scheduling_algorithm == "RAND":
                     data[:] = 1.0
 
-        mask = self._get_mask()
+        if self.scheduling_mode == "machine":
+            mask = self._get_ms_mask()
+        else:
+            job = self.monitor.queue_for_crane_scheduling
+            mask = self._get_cs_mask(job, job.next_location)
 
         state = State()
         state.update(data, mask)
