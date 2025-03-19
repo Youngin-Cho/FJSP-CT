@@ -261,18 +261,19 @@ class Factory:
 
             for crane in self.resources.values():
                 flag_accessibility = False
-                flag_not_reversed = True
-
                 if ((crane.id == 0) and (current_location_coord[0] <= self.x_max - self.safety_margin)
                     and (next_location_coord[0] <= self.x_max - self.safety_margin)) or \
                         ((crane.id == 1) and (current_location_coord[0] >= self.safety_margin)
                          and (next_location_coord[0] >= self.safety_margin)):
                     flag_accessibility = True
 
+                # ex) current working order: (3, M1, M3) -> new working order: (2, M3, M1)
+                flag_not_reversed = True
                 if crane.current_working_order is not None:
                     if crane.current_working_order[2] == job.current_location:
                         flag_not_reversed = False
 
+                # ex) queue: [(3, M1, M3), (4, M4, M1)] -> new working order: (2, M3, M4)
                 flag_not_cycled = True
                 if job.current_location != next_location:
                     start = job.current_location
@@ -293,6 +294,8 @@ class Factory:
                             flag_not_cycled = False
                             break
 
+                # ex) [Crane 0] current working order: (6, M2, M0) / queue: [(4, M1, M2), (3, M3, B0)]
+                #     [Crane 1] current working order: (2, M0, B1) / queue: [(9, I0, M4)] -> new working order: (5, B0, M3)
                 flag_not_blocked = True
                 if job.current_location != next_location:
                     if crane.current_working_order is not None:
@@ -361,24 +364,26 @@ class Factory:
                                 if operation is not None:
                                     proctime = operation.get_processing_time(location.local_id)
                                     data[location.global_id - self.num_inputpoints, job.id] \
-                                        = 1 / proctime if proctime > 0 else 0
+                                        = 1 / proctime if proctime > 0 else 1
                             elif location.category == 2:
                                 data[location.global_id - self.num_inputpoints, job.id] = 1
                             elif location.category == 3:
                                 if operation is None:
                                     data[location.global_id - self.num_inputpoints, job.id] = 1
+
                 elif machine_scheduling_algorithm == "MOR":
                     for job in self.monitor.queue_for_machine_scheduling.values():
-                        num_remaining_ops = len(job.operations) - job.step
+                        remaining_operations = len(job.operations) - job.step
                         for location in self.locations.values():
                             if location.category == 1:
-                                if num_remaining_ops > 0:
-                                    data[location.global_id - self.num_inputpoints, job.id] = num_remaining_ops
+                                if remaining_operations > 0:
+                                    data[location.global_id - self.num_inputpoints, job.id] = remaining_operations
                             elif location.category == 2:
                                 data[location.global_id - self.num_inputpoints, job.id] = 1
                             elif location.category == 3:
-                                if num_remaining_ops == 0:
+                                if remaining_operations == 0:
                                     data[location.global_id - self.num_inputpoints, job.id] = 1
+
                 elif machine_scheduling_algorithm == "MWKR":
                     for job in self.monitor.queue_for_machine_scheduling.values():
                         if job.step < len(job.operations):
@@ -395,6 +400,7 @@ class Factory:
                             elif location.category == 3:
                                 if remaining_work == 0.0:
                                     data[location.global_id - self.num_inputpoints, job.id] = 1
+
                 elif machine_scheduling_algorithm == "RAND":
                     data[:, :] = 1.0
         else:
@@ -404,13 +410,66 @@ class Factory:
                 pass
             else:
                 data = np.zeros(self.num_cranes + 1)
+                data[self.num_cranes] = 1
+
+                job = self.monitor.queue_for_crane_scheduling
+                location_coord = self.locations[job.current_location].coord
 
                 if crane_scheduling_algorithm == "SETT":
-                    pass
+                    for crane in self.resources.values():
+                        if len(crane.queue) > 0:
+                            crane_coord = self.locations[crane.queue[-1][2]].coord
+                        else:
+                            if crane.current_working_order is not None:
+                                crane_coord = self.locations[crane.current_working_order[2]].coord
+                            else:
+                                crane_coord = crane.current_coord
+
+                        x_travel_time = abs(location_coord[0] - crane_coord[0]) / crane.x_velocity
+                        y_travel_time = abs(location_coord[1] - crane_coord[1]) / crane.y_velocity
+                        empty_travel_time = max(x_travel_time, y_travel_time)
+
+                        data[crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1
+
                 elif crane_scheduling_algorithm == "NCR":
                     pass
+
+                elif crane_scheduling_algorithm == "LOR":
+                    for crane in self.resources.values():
+                        remaining_jobs = 0
+                        if crane.current_working_order is not None:
+                            remaining_jobs += 1
+                        remaining_jobs += len(crane.queue)
+
+                        data[crane.id] = 1 / remaining_jobs if remaining_jobs > 0 else 1
+
                 elif crane_scheduling_algorithm == "LWKR":
-                    pass
+                    for crane in self.resources.values():
+                        sequence = []
+                        if crane.current_working_order is not None:
+                            if crane.to_location == crane.current_working_order[1]:
+                                sequence.append(crane.current_working_order[1])
+                                sequence.append(crane.current_working_order[2])
+                            else:
+                                sequence.append(crane.current_working_order[2])
+                        for working_order in crane.queue:
+                            sequence.append(working_order[1])
+                            sequence.append(working_order[2])
+
+                        remaining_work = 0
+                        current_coord = crane.current_coord
+                        for location_name in sequence:
+                            location_coord = self.locations[location_name].coord
+
+                            x_travel_time = abs(location_coord[0] - current_coord[0]) / crane.x_velocity
+                            y_travel_time = abs(location_coord[1] - current_coord[1]) / crane.y_velocity
+                            travel_time = max(x_travel_time, y_travel_time)
+                            remaining_work += travel_time
+
+                            current_coord = location_coord
+
+                        data[crane.id] = 1 / remaining_work if remaining_work > 0 else 1
+
                 elif crane_scheduling_algorithm == "RAND":
                     data[:] = 1.0
 
