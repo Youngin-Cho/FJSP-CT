@@ -51,6 +51,10 @@ class Factory:
         self.x_max = int(self.df_locations["X_Coordinate"].max())
         self.y_max = int(self.df_locations["Y_Coordinate"].max())
 
+        self.proctimes = self.df_operations.filter(like='Machine').to_numpy()
+        self.proctime_max = np.max(self.proctimes)
+        self.proctime_min = np.min(self.proctimes[self.proctimes != 0])
+
         self.location_id_to_name = {}
         for i, row in self.df_locations.iterrows():
             self.location_id_to_name[int(row["Global_Index"])] = row["Name"]
@@ -61,28 +65,30 @@ class Factory:
 
         self.input_dim_crane = 4
         self.input_dim_operation = 9
-        self.input_dim_machine = 6
-        self.input_dim_buffer = None
+        self.input_dim_machine = 8
+        self.input_dim_buffer = 4
+        self.input_dim_output = 4
         self.input_dim_pair = 6
 
-        self.meta_data = (["operation", "inputpoint", "machine", "buffer", "outputpoint", "crane"],
-                          [("operation", "predecessor", "operation"),
-                           ("machine", "machine_to_operation", "operation"),
-                           ("operation", "operation_to_machine", "machine"),
-                           ("buffer", "buffer_to_operation", "operation"),
-                           ("operation", "operation_to_buffer", "buffer"),
-                           ("crane", "crane_to_machine", "machine"),
-                           ("machine", "machine_to_crane", "crane"),
-                           ("crane", "crane_to_buffer", "buffer"),
-                           ("buffer", "buffer_to_crane", "crane")])
+        self.meta_data_ms = (["operation", "machine", "buffer", "output"],
+                             [("operation", "predecessor", "operation"),
+                              ("operation", "successor", "operation"),
+                              ("machine", "machine_to_operation", "operation"),
+                              ("operation", "operation_to_machine", "machine"),
+                              ("buffer", "buffer_to_operation", "operation"),
+                              ("operation", "operation_to_buffer", "buffer"),
+                              ("operation", "operation_to_output", "output"),
+                              ("output", "output_to_operation", "operation"),])
 
-        self.state_size = {"operation": self.input_dim_operation,
-                           "machine": self.input_dim_machine,
-                           "crane": self.input_dim_crane}
+        self.state_size_ms = {"operation": self.input_dim_operation,
+                              "machine": self.input_dim_machine,
+                              "buffer": self.input_dim_buffer,
+                              "output": self.input_dim_output}
 
-        self.num_nodes = {"operation": self.num_operations,
-                          "machine": self.num_machines,
-                          "crane": self.num_cranes}
+        self.num_nodes_ms = {"operation": self.num_operations,
+                             "machine": self.num_machines,
+                             "buffer": self.num_buffers,
+                             "output": self.num_outputpoints}
 
         self.state = None
         self.mask = None
@@ -349,7 +355,289 @@ class Factory:
             machine_scheduling_algorithm = self.algorithm[0]
 
             if machine_scheduling_algorithm == "RL":
-                pass
+                fea_operation = np.zeros((self.num_operations, self.input_dim_operation))
+                fea_machine = np.zeros((self.num_machines, self.input_dim_machine))
+                fea_buffer = np.zeros((self.num_buffers, self.input_dim_buffer))
+                fea_output = np.zeros((self.num_outputpoints, self.input_dim_output))
+                fea_pair = np.zeros((self.num_jobs, self.num_machines + self.num_buffers + self.num_outputpoints, self.input_dim_pair))
+                current_operations = np.zeros(self.num_jobs)
+
+                edge_predecessor, edge_successor = [[], []], [[], []]
+                edge_machine_to_operation, edge_operation_to_machine = [[], []], [[], []]
+                edge_buffer_to_operation, edge_operation_to_buffer = [[], []], [[], []]
+                edge_output_to_operation, edge_operation_to_output = [[], []], [[], []]
+
+                proctime_remaining = np.zeros((self.num_operations, self.num_machines))
+                proctime_current = np.zeros((self.num_jobs, self.num_machines))
+
+                proctime_remaining_mask = np.zeros(self.num_operations, dtype=bool)
+                proctime_current_mask = np.zeros(self.num_jobs, dtype=bool)
+
+                self.estimated_completion_time_updated = copy.copy(self.estimated_completion_time)
+
+                # Operation Feature
+                for j in self.df_operations["Job_Index"].unique():
+                    if j in self.monitor.jobs_before_system.keys():
+                        job = self.monitor.jobs_before_system[j]
+                    elif j in self.monitor.jobs_in_system.keys():
+                        job = self.monitor.jobs_in_system[j]
+                    else:
+                        job = self.monitor.jobs_after_system[j]
+
+                    if job.step < len(job.operations):
+                        current_operations[job.id] = job.operations[job.step].id
+                    else:
+                        current_operations[job.id] = job.operations[-1].id
+
+                    # 작업되지 않은 operation들의 작업시간 정보
+                    for operation in job.operations[job.step:]:
+                        proctime_remaining[operation.id, :] \
+                            = (operation.options - self.proctime_min) / (self.proctime_max - self.proctime_min)
+                        proctime_remaining_mask[operation.id] = True
+
+                    # 의사결정이 필요한 job에 대하여, 해당 job의 다음 operation 작업시간 정보
+                    if j in self.monitor.queue_for_machine_scheduling.keys():
+                        if job.step < len(job.operations):
+                            proctime_current[job.id, :] \
+                                = (job.operations[job.step].options - self.proctime_min) / (self.proctime_max - self.proctime_min)
+                            proctime_current_mask[job.id] = True
+
+                    # job에 수행되는 각 operation의 평균 작업시간
+                    job_proctime = [(np.mean(operation.options[operation.options != 0] - self.proctime_min)
+                                     / (self.proctime_max - self.proctime_min))
+                                    for operation in job.operations]
+                    # job에 수행되는 모든 operation의 평균 작업시간 총합
+                    job_proctime_sum = np.sum(job_proctime)
+
+                    if job.step < len(job.operations):
+                        job_remaining_proctime_sum = np.sum([job_proctime[job.step:]])
+                    else:
+                        job_remaining_proctime_sum = 0
+
+                    for k, operation in enumerate(job.operations):
+                        eligible_options = ((operation.options[operation.options != 0] - self.proctime_min)
+                                            / (self.proctime_max - self.proctime_min))
+
+                        if ((k < job.step)
+                            or (k == job.step and operation.id in self.monitor.operations_working.keys())):
+                            machine = self.locations[operation.allocated_machine]
+                            proctime = operation.get_processing_time(machine.local_id)
+                            earliest_finish_time = operation.start_time
+                        else:
+                            proctime = np.min(eligible_options)
+                            earliest_finish_time = max(self.sim_env.now, job.arrival_time)
+
+                        earliest_finish_time = earliest_finish_time + proctime
+
+                        # Operation Feature
+                        if (operation.id in self.monitor.operations_working.keys()
+                                or operation.id in self.monitor.operations_waiting.keys()):
+                            f0 = [0, 1, 0]
+                        elif operation.id in self.monitor.operations_done:
+                            f0 = [0, 0, 1]
+                        else:
+                            f0 = [1, 0, 0]
+
+                        f1 = np.min(eligible_options)
+                        f2 = np.mean(eligible_options)
+                        f3 = np.max(eligible_options)
+                        f4 = np.sum(job_proctime[k:]) # / (len(job.operations) - k)
+                        f5 = len(eligible_options) / self.num_machines
+                        f6 = earliest_finish_time # / (k + 1)
+
+                        fea_operation[operation.id, :3] = f0
+                        fea_operation[operation.id, 3:] = [f1, f2, f3, f4, f5, f6]
+
+                    self.estimated_completion_time_updated[job.id] = earliest_finish_time
+
+                # Location Feature
+                proctime_remaining = proctime_remaining[proctime_remaining_mask]
+                proctime_current = proctime_current[proctime_current_mask]
+
+                proctime_remaining_mean = np.array([np.mean(temp[temp >= 0]) for temp in proctime_remaining])
+                proctime_current_mean = np.array([np.mean(temp[temp >= 0]) for temp in proctime_current])
+
+                proctime_remaining_sum = np.sum(proctime_remaining_mean)  # 작업이 미완료된 operation의 평균 작업시간 합
+                proctime_current_sum = np.sum(proctime_current_mean)  # 스케줄링 대상 operation의 평균 작업시간 합
+
+                proctime_compatible = np.copy(proctime_current)
+
+                available_time_list = []
+                for location in self.locations.values():
+                    if location.category == 0:
+                        continue
+                    else:
+                        fully_occupied = location.check_status()
+                        if not fully_occupied:
+                            f0 = [1, 0]
+                        else:
+                            f0 = [0, 1]
+
+                        xcoord, ycoord = location.coord
+                        f1 = [xcoord / self.x_max if self.x_max !=0 else 0,
+                              ycoord / self.y_max if self.y_max != 0 else 0]
+
+                        if location.category == 1:
+                            if fully_occupied:
+                                proctime_compatible[:, location.local_id] = -1
+
+                            eligible_proctime_remaining = proctime_remaining[:, location.local_id][
+                                proctime_remaining[:, location.local_id] >= 0]
+                            eligible_proctime_current = proctime_current[:, location.local_id][
+                                proctime_current[:, location.local_id] >= 0]
+
+                            available_time = location.get_available_time()
+                            available_time_list.append(available_time)
+
+                            f2 = np.sum(eligible_proctime_current) / proctime_current_sum
+                            f3 = len(eligible_proctime_current) / len(proctime_current)
+                            f4 = available_time - self.sim_env.now
+                            f5 = (self.sim_env.now - location.completion_time) if not fully_occupied else 0
+
+                            fea_machine[location.local_id, :2] = f0
+                            fea_machine[location.local_id, 2:4] = f1
+                            fea_machine[location.local_id, 4:] = [f2, f3, f4, f5]
+
+                        elif location.category == 2:
+                            fea_buffer[location.local_id, :2] = f0
+                            fea_buffer[location.local_id, 2:4] = f1
+
+                        else:
+                            fea_output[location.local_id, :2] = f0
+                            fea_output[location.local_id, 2:4] = f1
+
+                if int(np.max(available_time_list) - self.sim_env.now) != 0:
+                    fea_machine[:, 6] = fea_machine[:, 6] / (np.max(available_time_list) - self.sim_env.now)
+                fea_machine[:, 7] = fea_machine[:, 7] / np.max(fea_machine[:, 7]) \
+                    if np.max(fea_machine[:, 7]) > 0.0 else 0.0
+
+                # Pair Feature
+                tag = np.array([(temp >= 0).any() for temp in proctime_compatible])
+                proctime_compatible = proctime_compatible[tag]
+
+                for j, job in enumerate(self.monitor.queue_for_machine_scheduling.values()):
+
+                    if job.step < len(job.operations):
+                        current_operation = job.operations[job.step]
+                    else:
+                        current_operation = job.operations[-1]
+
+                    for i, location in enumerate(self.locations.values()):
+                        if location.category == 0:
+                            continue
+                        else:
+                            job_coord = self.locations[job.current_location].coord
+                            f1 = (location.coord[0] - job_coord[0]) / self.x_max if self.x_max != 0 else 0
+                            f2 = (location.coord[1] - job_coord[1]) / self.y_max if self.y_max != 0 else 0
+
+                            if location.category == 1:
+                                fully_occupied = location.check_status()
+
+                                if not fully_occupied:
+                                    options = current_operation.options
+                                    options = (options - self.proctime_min) / (self.proctime_max - self.proctime_min)
+                                    proctime = current_operation.get_processing_time(location.local_id)
+                                    proctime = (proctime - self.proctime_min) / (self.proctime_max - self.proctime_min)
+
+                                    if proctime >= 0:
+                                        proctime_compatible_copy = copy.copy(proctime_compatible)
+                                        proctime_compatible_copy[:, location.local_id] = -1
+                                        # num_compatible_pairs = len(proctime_compatible[proctime_compatible >= 0])
+                                        # num_compatible_pairs_updated \
+                                        #     = len(proctime_compatible_copy[proctime_compatible_copy >= 0])
+                                        # min_proctime_compatible \
+                                        #     = np.array([np.min(temp[temp >= 0]) for temp in proctime_compatible])
+                                        # min_proctime_compatible_updated \
+                                        #     = np.array([np.min(temp[temp >= 0]) for temp in proctime_compatible_copy])
+
+                                        f3 = proctime
+                                        f4 = proctime / np.max(options)
+                                        f5 = proctime / np.max(proctime_compatible[:, location.local_id]) \
+                                            if np.max(proctime_compatible[:, location.local_id]) > 0 else 0
+                                        f6 = proctime / np.max(proctime_compatible)
+
+                                        fea_pair[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, f3, f4, f5, f6]
+                                    else:
+                                        fea_pair[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, 0, 0, 0, 0]
+                            else:
+                                fea_pair[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, 0, 0, 0, 0]
+
+                # Edge Construction
+                for j in self.df_operations["Job_Index"].unique():
+                    if j in self.monitor.jobs_before_system.keys():
+                        job = self.monitor.jobs_before_system[j]
+                    elif j in self.monitor.jobs_in_system.keys():
+                        job = self.monitor.jobs_in_system[j]
+                    else:
+                        job = self.monitor.jobs_after_system[j]
+
+                    for k, operation in enumerate(job.operations):
+                        if k > 0:
+                            edge_predecessor[0].append(operation.id - 1)
+                            edge_predecessor[1].append(operation.id)
+                            edge_successor[0].append(operation.id)
+                            edge_successor[1].append(operation.id - 1)
+
+                        for location in self.locations.values():
+                            if location.category == 0:
+                                continue
+
+                            elif location.category == 1:
+                                if k >= job.step:
+                                    proctime = operation.get_processing_time(location.local_id)
+                                    if proctime != 0:
+                                        edge_operation_to_machine[0].append(operation.id)
+                                        edge_operation_to_machine[1].append(location.local_id)
+                                        edge_machine_to_operation[0].append(location.local_id)
+                                        edge_machine_to_operation[1].append(operation.id)
+                                else:
+                                    if location.name == operation.allocated_machine:
+                                        edge_operation_to_machine[0].append(operation.id)
+                                        edge_operation_to_machine[1].append(location.local_id)
+                                        edge_machine_to_operation[0].append(location.local_id)
+                                        edge_machine_to_operation[1].append(operation.id)
+
+                            elif location.category == 2:
+                                if k >= job.step:
+                                    edge_operation_to_buffer[0].append(operation.id)
+                                    edge_operation_to_buffer[1].append(location.local_id)
+                                    edge_buffer_to_operation[0].append(location.local_id)
+                                    edge_buffer_to_operation[1].append(operation.id)
+
+                            else:
+                                if k == len(job.operations) - 1:
+                                    edge_operation_to_output[0].append(operation.id)
+                                    edge_operation_to_output[1].append(location.local_id)
+                                    edge_output_to_operation[0].append(location.local_id)
+                                    edge_output_to_operation[1].append(operation.id)
+
+                fea_operation = torch.from_numpy(fea_operation).type(torch.float32).to(self.device)
+                fea_machine = torch.from_numpy(fea_machine).type(torch.float32).to(self.device)
+                fea_buffer = torch.from_numpy(fea_buffer).type(torch.float32).to(self.device)
+                fea_output = torch.from_numpy(fea_output).type(torch.float32).to(self.device)
+                edge_predecessor = torch.from_numpy(np.array(edge_predecessor)).type(torch.long).to(self.device)
+                edge_successor = torch.from_numpy(np.array(edge_successor)).type(torch.long).to(self.device)
+                edge_operation_to_machine = torch.from_numpy(np.array(edge_operation_to_machine)).type(torch.long).to(self.device)
+                edge_machine_to_operation = torch.from_numpy(np.array(edge_machine_to_operation)).type(torch.long).to(self.device)
+                edge_operation_to_buffer = torch.from_numpy(np.array(edge_operation_to_buffer)).type(torch.long).to(self.device)
+                edge_buffer_to_operation = torch.from_numpy(np.array(edge_buffer_to_operation)).type(torch.long).to(self.device)
+                edge_operation_to_output = torch.from_numpy(np.array(edge_operation_to_output)).type(torch.long).to(self.device)
+                edge_output_to_operation = torch.from_numpy(np.array(edge_output_to_operation)).type(torch.long).to(self.device)
+
+                data = HeteroData()
+                data["operation"].x = fea_operation
+                data["machine"].x = fea_machine
+                data["buffer"].x = fea_buffer
+                data["output"].x = fea_output
+                data["operation", "predecessor", "operation"].edge_index = edge_predecessor
+                data["operation", "successor", "operation"].edge_index = edge_successor
+                data["operation", "operation_to_machine", "machine"].edge_index = edge_operation_to_machine
+                data["machine", "machine_to_operation", "operation"].edge_index = edge_machine_to_operation
+                data["operation", "operation_to_buffer", "buffer"].edge_index = edge_operation_to_buffer
+                data["buffer", "buffer_to_operation", "operation"].edge_index = edge_buffer_to_operation
+                data["operation", "operation_to_output", "output"].edge_index = edge_operation_to_output
+                data["output", "output_to_operation", "operation"].edge_index = edge_output_to_operation
+
             else:
                 num_rows = self.num_machines + self.num_buffers + self.num_outputpoints
                 num_columns = self.num_jobs
@@ -480,7 +768,10 @@ class Factory:
             mask = self._get_cs_mask(job, job.next_location)
 
         state = State()
-        state.update(data, mask)
+        if self.scheduling_mode == "machine" and self.algorithm[0] == "RL":
+            state.update(data, mask, current_operation)
+        else:
+            state.update(data, mask)
 
         self.state = state
 
@@ -566,8 +857,8 @@ if __name__ == "__main__":
     agent_cs = CraneSchedulingHeuristic()
 
     # data_src = DataGenerator()
-    data_src = "../input/validation/10-5/instance-19.xlsx"
-    env = Factory(data_src, algorithm=("RAND","RAND"), record_events=True)
+    data_src = "../input/validation/10-5/instance-1.xlsx"
+    env = Factory(data_src, algorithm=("RL","RAND"), record_events=True)
 
     step = 0
     random.seed(42)
@@ -575,7 +866,10 @@ if __name__ == "__main__":
 
     while True:
         if env.scheduling_mode == "machine":
-            action = agent_ms.act(state)
+            # action = agent_ms.act(state)
+            mask = state.mask.flatten()
+            candidates = np.where(mask == True)[0]
+            action = np.random.choice(candidates)
         else:
             action = agent_cs.act(state)
 
