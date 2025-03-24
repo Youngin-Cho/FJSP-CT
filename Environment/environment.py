@@ -489,8 +489,10 @@ class Factory:
                             available_time = location.get_available_time()
                             available_time_list.append(available_time)
 
-                            f2 = np.sum(eligible_proctime_current) / proctime_current_sum
-                            f3 = len(eligible_proctime_current) / len(proctime_current)
+                            f2 = np.sum(eligible_proctime_current) / proctime_current_sum \
+                                if proctime_current_sum != 0 else 0
+                            f3 = len(eligible_proctime_current) / len(proctime_current) \
+                                if len(proctime_current) > 0 else 0
                             f4 = available_time - self.sim_env.now
                             f5 = (self.sim_env.now - location.completion_time) if not fully_occupied else 0
 
@@ -513,14 +515,16 @@ class Factory:
 
                 # Pair Feature
                 tag = np.array([(temp >= 0).any() for temp in proctime_compatible])
-                proctime_compatible = proctime_compatible[tag]
+                proctime_compatible = proctime_compatible[tag] if len(tag) > 0 else None
 
                 for j, job in enumerate(self.monitor.queue_for_machine_scheduling.values()):
 
                     if job.step < len(job.operations):
                         current_operation = job.operations[job.step]
+                        skip = False
                     else:
                         current_operation = job.operations[-1]
+                        skip = True
 
                     for i, location in enumerate(self.locations.values()):
                         if location.category == 0:
@@ -533,7 +537,7 @@ class Factory:
                             if location.category == 1:
                                 fully_occupied = location.check_status()
 
-                                if not fully_occupied:
+                                if (not fully_occupied) and (not skip):
                                     options = current_operation.options
                                     options = (options - self.proctime_min) / (self.proctime_max - self.proctime_min)
                                     proctime = current_operation.get_processing_time(location.local_id)
@@ -553,8 +557,9 @@ class Factory:
                                         f3 = proctime
                                         f4 = proctime / np.max(options)
                                         f5 = proctime / np.max(proctime_compatible[:, location.local_id]) \
-                                            if np.max(proctime_compatible[:, location.local_id]) > 0 else 0
-                                        f6 = proctime / np.max(proctime_compatible)
+                                            if np.max(proctime_compatible[:, location.local_id], initial=0) > 0 else 0
+                                        f6 = proctime / np.max(proctime_compatible) \
+                                            if np.max(proctime_compatible, initial=0) > 0 else 0
 
                                         fea_pair[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, f3, f4, f5, f6]
                                     else:
@@ -769,7 +774,7 @@ class Factory:
 
         state = State()
         if self.scheduling_mode == "machine" and self.algorithm[0] == "RL":
-            state.update(data, mask, current_operation)
+            state.update(data, mask, current_operations)
         else:
             state.update(data, mask)
 
