@@ -64,7 +64,7 @@ class Factory:
             self.resource_id_to_name[int(row["Index"])] = row["Name"]
 
         self.input_dim_crane = 4
-        self.input_dim_operation = 9
+        self.input_dim_operation = 8
         self.input_dim_machine = 8
         self.input_dim_buffer = 4
         self.input_dim_output = 4
@@ -150,10 +150,12 @@ class Factory:
 
             if self.sink.num_jobs_degenerated == self.num_jobs:
                 done = True
-                self.monitor.get_logs("./temp.xlsx")
+                # self.monitor.get_logs("./temp.xlsx")
                 break
 
             self.sim_env.step()
+
+        self._update_completion_time()
 
         next_state = self._get_state()
         reward = self._calculate_reward()
@@ -183,10 +185,12 @@ class Factory:
         if self.decision_time != self.sim_env.now:
             self.decision_time = self.sim_env.now
 
+        self._update_completion_time()
+
         state = self._get_state()
 
-        self.decision_time = self.sim_env.now
         self.estimated_completion_time = copy.copy(self.estimated_completion_time_updated)
+        self.decision_time = self.sim_env.now
 
         return state
 
@@ -373,8 +377,6 @@ class Factory:
                 proctime_remaining_mask = np.zeros(self.num_operations, dtype=bool)
                 proctime_current_mask = np.zeros(self.num_jobs, dtype=bool)
 
-                self.estimated_completion_time_updated = copy.copy(self.estimated_completion_time)
-
                 # Operation Feature
                 for j in self.df_operations["Job_Index"].unique():
                     if j in self.monitor.jobs_before_system.keys():
@@ -418,17 +420,6 @@ class Factory:
                         eligible_options = ((operation.options[operation.options != 0] - self.proctime_min)
                                             / (self.proctime_max - self.proctime_min))
 
-                        if ((k < job.step)
-                            or (k == job.step and operation.id in self.monitor.operations_working.keys())):
-                            machine = self.locations[operation.allocated_machine]
-                            proctime = operation.get_processing_time(machine.local_id)
-                            earliest_finish_time = operation.start_time
-                        else:
-                            proctime = np.min(eligible_options)
-                            earliest_finish_time = max(self.sim_env.now, job.arrival_time)
-
-                        earliest_finish_time = earliest_finish_time + proctime
-
                         # Operation Feature
                         if (operation.id in self.monitor.operations_working.keys()
                                 or operation.id in self.monitor.operations_waiting.keys()):
@@ -443,12 +434,9 @@ class Factory:
                         f3 = np.max(eligible_options)
                         f4 = np.sum(job_proctime[k:]) # / (len(job.operations) - k)
                         f5 = len(eligible_options) / self.num_machines
-                        f6 = earliest_finish_time # / (k + 1)
 
                         fea_operation[operation.id, :3] = f0
-                        fea_operation[operation.id, 3:] = [f1, f2, f3, f4, f5, f6]
-
-                    self.estimated_completion_time_updated[job.id] = earliest_finish_time
+                        fea_operation[operation.id, 3:] = [f1, f2, f3, f4, f5]
 
                 # Location Feature
                 proctime_remaining = proctime_remaining[proctime_remaining_mask]
@@ -782,8 +770,88 @@ class Factory:
 
         return state
 
+    def _update_completion_time(self):
+        self.estimated_completion_time_updated = copy.copy(self.estimated_completion_time)
+
+        transportation_times = {}
+        for crane in self.resources.values():
+            job_ids = []
+            sequence = []
+            if crane.current_working_order is not None:
+                if crane.to_location == crane.current_working_order[1]:
+                    job_ids.append(crane.current_working_order[0])
+                    job_ids.append(crane.current_working_order[0])
+                    sequence.append(crane.current_working_order[1])
+                    sequence.append(crane.current_working_order[2])
+                else:
+                    job_ids.append(crane.current_working_order[0])
+                    sequence.append(crane.current_working_order[2])
+            for working_order in crane.queue:
+                job_ids.append(working_order[0])
+                job_ids.append(working_order[0])
+                sequence.append(working_order[1])
+                sequence.append(working_order[2])
+
+            temp = 0
+            current_coord = crane.current_coord
+            for i, location_name in enumerate(sequence):
+                location_coord = self.locations[location_name].coord
+
+                x_travel_time = abs(location_coord[0] - current_coord[0]) / crane.x_velocity
+                y_travel_time = abs(location_coord[1] - current_coord[1]) / crane.y_velocity
+                travel_time = max(x_travel_time, y_travel_time)
+                temp += travel_time
+
+                flag_add = False
+                if i < len(job_ids) - 1:
+                    if job_ids[i] != job_ids[i + 1]:
+                        flag_add = True
+                else:
+                    flag_add = True
+
+                if flag_add:
+                    transportation_times[job_ids[i]] = temp
+
+                current_coord = location_coord
+
+        for j in self.df_operations["Job_Index"].unique():
+            if j in self.monitor.jobs_before_system.keys():
+                job = self.monitor.jobs_before_system[j]
+            elif j in self.monitor.jobs_in_system.keys():
+                job = self.monitor.jobs_in_system[j]
+            else:
+                job = self.monitor.jobs_after_system[j]
+
+            for k, operation in enumerate(job.operations):
+                if k < job.step:
+                    machine = self.locations[operation.allocated_machine]
+                    proctime = operation.get_processing_time(machine.local_id)
+                    earliest_finish_time = operation.start_time + proctime
+                elif k == job.step:
+                    if operation.id in self.monitor.operations_working.keys():
+                        machine = self.locations[operation.allocated_machine]
+                        proctime = operation.get_processing_time(machine.local_id)
+                        earliest_finish_time = operation.start_time + proctime
+                    else:
+                        proctime = np.min(operation.options[operation.options != 0])
+                        if transportation_times.get(job.id) is not None:
+                            transportation_time = transportation_times[job.id]
+                        else:
+                            transportation_time = 0.0
+                        expected_start_time = self.sim_env.now + transportation_time
+                        earliest_finish_time = max(expected_start_time, job.arrival_time) + proctime
+                else:
+                    proctime = np.min(operation.options[operation.options != 0])
+                    earliest_finish_time = earliest_finish_time + proctime
+
+            self.estimated_completion_time_updated[job.id] = earliest_finish_time
+
+
     def _calculate_reward(self):
-        return 0.0
+        makespan = np.max(self.estimated_completion_time)
+        makespan_updated = np.max(self.estimated_completion_time_updated)
+        reward = - (makespan_updated - makespan)
+        return reward
 
     def _build_model(self):
         sim_env = simpy.Environment()
@@ -862,7 +930,7 @@ if __name__ == "__main__":
     agent_cs = CraneSchedulingHeuristic()
 
     # data_src = DataGenerator()
-    data_src = "../input/validation/10-5/instance-1.xlsx"
+    data_src = "../input/new_validation/10-5/instance-1.xlsx"
     env = Factory(data_src, algorithm=("RL","RAND"), record_events=True)
 
     step = 0
@@ -883,7 +951,7 @@ if __name__ == "__main__":
         state = next_state
         step += 1
 
-        print(step)
+        print(step, reward)
 
         if done:
             break
