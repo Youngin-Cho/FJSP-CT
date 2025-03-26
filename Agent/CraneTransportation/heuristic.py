@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class CraneSchedulingHeuristic:
+class CTHeuristic:
     def __init__(self):
         pass
 

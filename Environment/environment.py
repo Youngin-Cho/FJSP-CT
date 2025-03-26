@@ -70,25 +70,25 @@ class Factory:
         self.input_dim_output = 4
         self.input_dim_pair = 6
 
-        self.meta_data_ms = (["operation", "machine", "buffer", "output"],
-                             [("operation", "predecessor", "operation"),
-                              ("operation", "successor", "operation"),
-                              ("machine", "machine_to_operation", "operation"),
-                              ("operation", "operation_to_machine", "machine"),
-                              ("buffer", "buffer_to_operation", "operation"),
-                              ("operation", "operation_to_buffer", "buffer"),
-                              ("operation", "operation_to_output", "output"),
-                              ("output", "output_to_operation", "operation"),])
+        self.fjsp_meta_data = (["operation", "machine", "buffer", "output"],
+                               [("operation", "predecessor", "operation"),
+                                ("operation", "successor", "operation"),
+                                ("machine", "machine_to_operation", "operation"),
+                                ("operation", "operation_to_machine", "machine"),
+                                ("buffer", "buffer_to_operation", "operation"),
+                                ("operation", "operation_to_buffer", "buffer"),
+                                ("operation", "operation_to_output", "output"),
+                                ("output", "output_to_operation", "operation"),])
 
-        self.state_size_ms = {"operation": self.input_dim_operation,
-                              "machine": self.input_dim_machine,
-                              "buffer": self.input_dim_buffer,
-                              "output": self.input_dim_output}
+        self.fjsp_state_size = {"operation": self.input_dim_operation,
+                                "machine": self.input_dim_machine,
+                                "buffer": self.input_dim_buffer,
+                                "output": self.input_dim_output}
 
-        self.num_nodes_ms = {"operation": self.num_operations,
-                             "machine": self.num_machines,
-                             "buffer": self.num_buffers,
-                             "output": self.num_outputpoints}
+        self.fjsp_num_nodes = {"operation": self.num_operations,
+                               "machine": self.num_machines,
+                               "buffer": self.num_buffers,
+                               "output": self.num_outputpoints}
 
         self.state = None
         self.mask = None
@@ -923,15 +923,15 @@ class Factory:
 
 if __name__ == "__main__":
     import random
-    from Agent.FlexibleJobShop.heuristic import MachineSchedulingHeuristic
-    from Agent.CraneTransportation.heuristic import CraneSchedulingHeuristic
+    from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
+    from Agent.CraneTransportation.heuristic import CTHeuristic
 
-    agent_ms = MachineSchedulingHeuristic()
-    agent_cs = CraneSchedulingHeuristic()
+    fjsp_agent = FJSPHeuristic()
+    ct_agent = CTHeuristic()
 
     # data_src = DataGenerator()
-    data_src = "../input/new_validation/10-5/instance-1.xlsx"
-    env = Factory(data_src, algorithm=("RL","RAND"), record_events=True)
+    data_src = "../input/validation/10-5/instance-1.xlsx"
+    env = Factory(data_src, algorithm=("RL","RAND"), use_recording=True)
 
     step = 0
     random.seed(42)
@@ -939,12 +939,12 @@ if __name__ == "__main__":
 
     while True:
         if env.scheduling_mode == "machine":
-            # action = agent_ms.act(state)
+            # action = fjsp_agent.act(state)
             mask = state.mask.flatten()
             candidates = np.where(mask == True)[0]
             action = np.random.choice(candidates)
         else:
-            action = agent_cs.act(state)
+            action = ct_agent.act(state)
 
         next_state, reward, done = env.step(action)
 

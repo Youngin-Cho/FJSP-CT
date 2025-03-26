@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class MachineSchedulingHeuristic:
+class FJSPHeuristic:
     def __init__(self):
         pass
 
