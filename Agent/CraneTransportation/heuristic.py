@@ -2,11 +2,11 @@ import numpy as np
 
 
 class CTHeuristic:
-    def __init__(self):
-        pass
+    def __init__(self, name):
+        self.name = name
 
     def act(self, state):
-        priority_idx = state.data
+        priority_idx = state.priority_idx
         mask = state.mask
         priority_idx[~mask] = 0.0
 

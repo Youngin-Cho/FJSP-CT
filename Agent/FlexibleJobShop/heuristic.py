@@ -2,11 +2,11 @@ import numpy as np
 
 
 class FJSPHeuristic:
-    def __init__(self):
-        pass
+    def __init__(self, name):
+        self.name = name
 
     def act(self, state):
-        priority_idx = state.data.flatten()
+        priority_idx = state.priority_idx.flatten()
         mask = state.mask.flatten()
         priority_idx[~mask] = 0.0
 

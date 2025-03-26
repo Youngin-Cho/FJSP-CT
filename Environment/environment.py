@@ -11,15 +11,32 @@ from Environment.simulation import *
 
 
 class State:
-    def __init__(self):
-        self.data = None
-        self.mask = None
-        self.current_ops = None
+    def __init__(self, algorithm="RL"):
+        self.algorithm = algorithm
+        if algorithm == "RL":
+            self.graph_feature = None
+            self.pairwise_feature = None
+            self.mask = None
+            self.current_operations = None
+        else:
+            self.priority_idx = None
+            self.mask = None
 
-    def update(self, data, mask, current_ops=None):
-        self.data = data
-        self.mask = mask
-        self.current_ops = current_ops if current_ops is not None else self.current_ops
+    def update(self,
+               graph_feature=None,
+               pairwise_feature=None,
+               priority_idx=None,
+               current_operations=None,
+               mask=None):
+
+        if self.algorithm == "RL":
+            self.graph_feature = graph_feature
+            self.pairwise_feature = pairwise_feature
+            self.mask = mask
+            self.current_operations = current_operations if current_operations is not None else None
+        else:
+            self.priority_idx = priority_idx
+            self.mask = mask
 
 
 class Factory:
@@ -617,25 +634,25 @@ class Factory:
                 edge_operation_to_output = torch.from_numpy(np.array(edge_operation_to_output)).type(torch.long).to(self.device)
                 edge_output_to_operation = torch.from_numpy(np.array(edge_output_to_operation)).type(torch.long).to(self.device)
 
-                data = HeteroData()
-                data["operation"].x = fea_operation
-                data["machine"].x = fea_machine
-                data["buffer"].x = fea_buffer
-                data["output"].x = fea_output
-                data["operation", "predecessor", "operation"].edge_index = edge_predecessor
-                data["operation", "successor", "operation"].edge_index = edge_successor
-                data["operation", "operation_to_machine", "machine"].edge_index = edge_operation_to_machine
-                data["machine", "machine_to_operation", "operation"].edge_index = edge_machine_to_operation
-                data["operation", "operation_to_buffer", "buffer"].edge_index = edge_operation_to_buffer
-                data["buffer", "buffer_to_operation", "operation"].edge_index = edge_buffer_to_operation
-                data["operation", "operation_to_output", "output"].edge_index = edge_operation_to_output
-                data["output", "output_to_operation", "operation"].edge_index = edge_output_to_operation
+                graph_feature = HeteroData()
+                graph_feature["operation"].x = fea_operation
+                graph_feature["machine"].x = fea_machine
+                graph_feature["buffer"].x = fea_buffer
+                graph_feature["output"].x = fea_output
+                graph_feature["operation", "predecessor", "operation"].edge_index = edge_predecessor
+                graph_feature["operation", "successor", "operation"].edge_index = edge_successor
+                graph_feature["operation", "operation_to_machine", "machine"].edge_index = edge_operation_to_machine
+                graph_feature["machine", "machine_to_operation", "operation"].edge_index = edge_machine_to_operation
+                graph_feature["operation", "operation_to_buffer", "buffer"].edge_index = edge_operation_to_buffer
+                graph_feature["buffer", "buffer_to_operation", "operation"].edge_index = edge_buffer_to_operation
+                graph_feature["operation", "operation_to_output", "output"].edge_index = edge_operation_to_output
+                graph_feature["output", "output_to_operation", "operation"].edge_index = edge_output_to_operation
 
             else:
                 num_rows = self.num_machines + self.num_buffers + self.num_outputpoints
                 num_columns = self.num_jobs
 
-                data = np.zeros((num_rows, num_columns))
+                priority_idx = np.zeros((num_rows, num_columns))
 
                 if machine_scheduling_algorithm == "SPT":
                     for job in self.monitor.queue_for_machine_scheduling.values():
@@ -644,13 +661,13 @@ class Factory:
                             if location.category == 1:
                                 if operation is not None:
                                     proctime = operation.get_processing_time(location.local_id)
-                                    data[location.global_id - self.num_inputpoints, job.id] \
+                                    priority_idx[location.global_id - self.num_inputpoints, job.id] \
                                         = 1 / proctime if proctime > 0 else 1
                             elif location.category == 2:
-                                data[location.global_id - self.num_inputpoints, job.id] = 1
+                                priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
                             elif location.category == 3:
                                 if operation is None:
-                                    data[location.global_id - self.num_inputpoints, job.id] = 1
+                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
 
                 elif machine_scheduling_algorithm == "MOR":
                     for job in self.monitor.queue_for_machine_scheduling.values():
@@ -658,12 +675,12 @@ class Factory:
                         for location in self.locations.values():
                             if location.category == 1:
                                 if remaining_operations > 0:
-                                    data[location.global_id - self.num_inputpoints, job.id] = remaining_operations
+                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = remaining_operations
                             elif location.category == 2:
-                                data[location.global_id - self.num_inputpoints, job.id] = 1
+                                priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
                             elif location.category == 3:
                                 if remaining_operations == 0:
-                                    data[location.global_id - self.num_inputpoints, job.id] = 1
+                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
 
                 elif machine_scheduling_algorithm == "MWKR":
                     for job in self.monitor.queue_for_machine_scheduling.values():
@@ -675,23 +692,23 @@ class Factory:
                         for location in self.locations.values():
                             if location.category == 1:
                                 if remaining_work > 0.0:
-                                    data[location.global_id - self.num_inputpoints, job.id] = remaining_work
+                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = remaining_work
                             elif location.category == 2:
-                                data[location.global_id - self.num_inputpoints, job.id] = 1
+                                priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
                             elif location.category == 3:
                                 if remaining_work == 0.0:
-                                    data[location.global_id - self.num_inputpoints, job.id] = 1
+                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
 
                 elif machine_scheduling_algorithm == "RAND":
-                    data[:, :] = 1.0
+                    priority_idx[:, :] = 1.0
         else:
             crane_scheduling_algorithm = self.algorithm[1]
 
             if crane_scheduling_algorithm == "RL":
                 pass
             else:
-                data = np.zeros(self.num_cranes + 1)
-                data[self.num_cranes] = 1
+                priority_idx = np.zeros(self.num_cranes + 1)
+                priority_idx[self.num_cranes] = 1
 
                 job = self.monitor.queue_for_crane_scheduling
                 location_coord = self.locations[job.current_location].coord
@@ -710,7 +727,7 @@ class Factory:
                         y_travel_time = abs(location_coord[1] - crane_coord[1]) / crane.y_velocity
                         empty_travel_time = max(x_travel_time, y_travel_time)
 
-                        data[crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1
+                        priority_idx[crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1
 
                 elif crane_scheduling_algorithm == "NCR":
                     pass
@@ -722,7 +739,7 @@ class Factory:
                             remaining_jobs += 1
                         remaining_jobs += len(crane.queue)
 
-                        data[crane.id] = 1 / remaining_jobs if remaining_jobs > 0 else 1
+                        priority_idx[crane.id] = 1 / remaining_jobs if remaining_jobs > 0 else 1
 
                 elif crane_scheduling_algorithm == "LWKR":
                     for crane in self.resources.values():
@@ -749,22 +766,35 @@ class Factory:
 
                             current_coord = location_coord
 
-                        data[crane.id] = 1 / remaining_work if remaining_work > 0 else 1
+                        priority_idx[crane.id] = 1 / remaining_work if remaining_work > 0 else 1
 
                 elif crane_scheduling_algorithm == "RAND":
-                    data[:] = 1.0
+                    priority_idx[:] = 1.0
 
         if self.scheduling_mode == "machine":
+            state = State(self.algorithm[0])
             mask = self._get_ms_mask()
+
+            if self.algorithm[0] == "RL":
+                state.update(graph_feature=graph_feature,
+                             pairwise_feature=fea_pair,
+                             current_operations=current_operations,
+                             mask=mask)
+            else:
+                state.update(priority_idx=priority_idx,
+                             mask=mask)
         else:
+            state = State(self.algorithm[1])
             job = self.monitor.queue_for_crane_scheduling
             mask = self._get_cs_mask(job, job.next_location)
 
-        state = State()
-        if self.scheduling_mode == "machine" and self.algorithm[0] == "RL":
-            state.update(data, mask, current_operations)
-        else:
-            state.update(data, mask)
+            if self.algorithm[1] == "RL":
+                state.update(graph_feature=graph_feature,
+                             pairwise_feature=fea_pair,
+                             mask=mask)
+            else:
+                state.update(priority_idx=priority_idx,
+                             mask=mask)
 
         self.state = state
 
@@ -926,12 +956,14 @@ if __name__ == "__main__":
     from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
     from Agent.CraneTransportation.heuristic import CTHeuristic
 
-    fjsp_agent = FJSPHeuristic()
-    ct_agent = CTHeuristic()
+    algorithm = ("RL", "RAND")
+
+    fjsp_agent = FJSPHeuristic(algorithm[0])
+    ct_agent = CTHeuristic(algorithm[1])
 
     # data_src = DataGenerator()
     data_src = "../input/validation/10-5/instance-1.xlsx"
-    env = Factory(data_src, algorithm=("RL","RAND"), use_recording=True)
+    env = Factory(data_src, algorithm=algorithm, use_recording=True)
 
     step = 0
     random.seed(42)

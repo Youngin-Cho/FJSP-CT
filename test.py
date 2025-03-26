@@ -8,8 +8,8 @@ import pandas as pd
 
 from torch.distributions.categorical import Categorical
 from Environment.environment import Factory
-from Agent.FlexibleJobShop.heuristic import MachineSchedulingHeuristic
-from Agent.CraneTransportation.heuristic import CraneSchedulingHeuristic
+from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
+from Agent.CraneTransportation.heuristic import CTHeuristic
 
 
 def get_config():
@@ -47,13 +47,13 @@ if __name__ == "__main__":
         if not os.path.exists(res_dir_temp):
             os.makedirs(res_dir_temp)
 
-    MS_algorithms = ["SPT", "MOR", "MWKR", "RAND"]
-    CS_algorithms = ["SETT", "LOR", "LWKR", "RAND"]
-    algorithms = [ms_algo + "+" + cs_algo for ms_algo in MS_algorithms for cs_algo in CS_algorithms]
+    fjsp_algorithms = ["SPT", "MOR", "MWKR", "RAND"]
+    ct_algorithms = ["SETT", "LOR", "LWKR", "RAND"]
+    algorithms = [fjsp_algo + "+" + ct_algo for fjsp_algo in fjsp_algorithms for ct_algo in ct_algorithms]
 
     for data_dir_temp, res_dir_temp in zip(data_dir, res_dir):
         test_paths = os.listdir(data_dir_temp)
-        index = ["P%d" % i for i in range(1, len(test_paths) + 1)] + ["avg"]
+        index = ["P%d" % i for i in range(1, len(test_paths))] + ["avg"]
         columns = algorithms
 
         df_makespan = pd.DataFrame(index=index, columns=columns)
@@ -65,6 +65,9 @@ if __name__ == "__main__":
             list_computing_time = []
 
             for prob, path in zip(index, test_paths):
+                if path.split(".")[-1] != "xlsx":
+                    continue
+
                 random.seed(random_seed)
 
                 data_src = data_dir_temp + path
@@ -92,8 +95,8 @@ if __name__ == "__main__":
                     # checkpoint = torch.load(model_path, map_location=torch.device(device))
                     # agent.load_state_dict(checkpoint['model_state_dict'])
                 else:
-                    agent_ms = MachineSchedulingHeuristic()
-                    agent_cs = CraneSchedulingHeuristic()
+                    fjsp_agent = FJSPHeuristic(name.split("+")[0])
+                    ct_agent = CTHeuristic(name.split("+")[1])
 
                 start = time.time()
                 state = env.reset()
@@ -110,9 +113,9 @@ if __name__ == "__main__":
                         # action = dist.sample().item()
                     else:
                         if env.scheduling_mode == "machine":
-                            action = agent_ms.act(state)
+                            action = fjsp_agent.act(state)
                         else:
-                            action = agent_cs.act(state)
+                            action = ct_agent.act(state)
 
                     next_state, reward, done = env.step(action)
 
