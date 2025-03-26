@@ -162,7 +162,7 @@ class Crane:
 
                 if len(self.queue) == 0:
                     waiting_start = self.env.now
-                    if self.monitor.record_events:
+                    if self.monitor.use_recording:
                         self.monitor.record(self.env.now, event="Waiting_Started",
                                             location=self.location_mapping[self.current_coord].name, resource=self.name)
 
@@ -170,7 +170,7 @@ class Crane:
                     target_coord = yield self.waiting_event
 
                     waiting_finish = self.env.now
-                    if self.monitor.record_events:
+                    if self.monitor.use_recording:
                         self.monitor.record(self.env.now, event="Waiting_Finished",
                                             location=self.location_mapping[self.current_coord].name, resource=self.name)
 
@@ -194,7 +194,7 @@ class Crane:
                 self.current_working_order = working_order
                 job_id, current_location, next_location = self.current_working_order
 
-                if self.monitor.record_events:
+                if self.monitor.use_recording:
                     self.monitor.record(self.env.now, event="Order_Assigned",
                                         resource=self.name, destination=current_location, queue=self.queue[:])
 
@@ -212,7 +212,7 @@ class Crane:
                 yield self.env.process(self._moving())
                 self.job = self.locations[self.to_location].get(job_id)
 
-                if self.monitor.record_events:
+                if self.monitor.use_recording:
                     self.monitor.record(self.env.now, event="Get",
                                         location=self.locations[self.to_location].name,
                                         resource=self.name, item=self.job.name)
@@ -229,7 +229,7 @@ class Crane:
                 yield self.env.process(self._moving())
                 self.locations[self.to_location].put(self.job)
 
-                if self.monitor.record_events:
+                if self.monitor.use_recording:
                     self.monitor.record(self.env.now, event="Put",
                                         location=self.locations[self.to_location].name,
                                         resource=self.name, item=self.job.name)
@@ -244,7 +244,7 @@ class Crane:
         while True:
             avoidance, safety_xcoord = self._check_interference()
 
-            if self.monitor.record_events:
+            if self.monitor.use_recording:
                 self.monitor.record(self.env.now, event="Check_Priority",
                                     location=self.location_mapping[self.current_coord].name, resource=self.name,
                                     item=self.job.name if self.job is not None else None, blocked=self.blocked,
@@ -257,7 +257,7 @@ class Crane:
                 travel_time = self.get_travel_time(self.safety_coord)
                 travel_time_opposite = self.opposite.get_travel_time(self.opposite.target_coord)
 
-                if self.monitor.record_events:
+                if self.monitor.use_recording:
                     self.monitor.record(self.env.now, event="Move_from",
                                         location=self.location_mapping[self.current_coord].name, resource=self.name,
                                         item=self.job.name if self.job is not None else None,
@@ -268,7 +268,7 @@ class Crane:
                 self.opposite.update_location(self.env.now)
                 self.update_location(self.env.now)
 
-                if self.monitor.record_events:
+                if self.monitor.use_recording:
                     self.monitor.record(self.env.now, event="Move_to",
                                         location=self.location_mapping[self.current_coord].name, resource=self.name,
                                         item=self.job.name if self.job is not None else None,
@@ -286,7 +286,7 @@ class Crane:
                 if travel_time_opposite > travel_time:
                     self.waiting = True
                     avoiding_start = self.env.now
-                    if self.monitor.record_events:
+                    if self.monitor.use_recording:
                         self.monitor.record(self.env.now, event="Avoiding_wait_start",
                                             location=self.location_mapping[self.current_coord].name, resource=self.name,
                                             item=self.job.name if self.job is not None else None,
@@ -299,7 +299,7 @@ class Crane:
 
                     self.waiting = False
                     avoiding_finish = self.env.now
-                    if self.monitor.record_events:
+                    if self.monitor.use_recording:
                         self.monitor.record(self.env.now, event="Avoiding_wait_finish",
                                             location=self.location_mapping[self.current_coord].name, resource=self.name,
                                             item=self.job.name if self.job is not None else None,
@@ -307,7 +307,7 @@ class Crane:
 
                     self.avoiding_time += avoiding_finish - avoiding_start
             else:
-                if self.monitor.record_events:
+                if self.monitor.use_recording:
                     self.monitor.record(self.env.now, event="Move_from",
                                         location=self.location_mapping[self.current_coord].name, resource=self.name,
                                         item=self.job.name if self.job is not None else None,
@@ -338,7 +338,7 @@ class Crane:
                 self.opposite.update_location(self.env.now)
                 self.update_location(self.env.now, on_location=True)
 
-                if self.monitor.record_events:
+                if self.monitor.use_recording:
                     self.monitor.record(self.env.now, event="Move_to",
                                         location=self.location_mapping[self.current_coord].name, resource=self.name,
                                         item=self.job.name if self.job is not None else None,
@@ -579,7 +579,7 @@ class InputPoint:
         self.monitor.jobs_in_system[job.id] = job
         operation = job.get_current_operation()
 
-        if self.monitor.record_events:
+        if self.monitor.use_recording:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Job_Arrived")
 
         self.monitor.add_to_queue(job, scheduling_mode="machine")
@@ -605,7 +605,7 @@ class InputPoint:
             crane = self.resources[crane_name]
             crane.add_to_queue((job.id, job.current_location, job.next_location))
 
-            if self.monitor.record_events:
+            if self.monitor.use_recording:
                 self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called",
                                     resource=crane_name, idle=crane.idle, destination=job.next_location,
                                     queue=crane.queue[:])
@@ -698,7 +698,7 @@ class Machine:
         operation = job.get_current_operation()
         self.monitor.operations_working[operation.id] = operation
 
-        if self.monitor.record_events:
+        if self.monitor.use_recording:
             self.monitor.record(self.env.now, location=self.name, job=job.name,
                                 operation=operation.name, event="Working_Started")
 
@@ -707,7 +707,7 @@ class Machine:
         operation.allocated_machine = self.name
         yield self.env.timeout(processing_time)
 
-        if self.monitor.record_events:
+        if self.monitor.use_recording:
             self.monitor.record(self.env.now, location=self.name, job=job.name,
                                 operation=operation.name, event="Working Finished")
 
@@ -746,7 +746,7 @@ class Machine:
                 crane = self.resources[crane_name]
                 crane.add_to_queue((job.id, job.current_location, job.next_location))
 
-                if self.monitor.record_events:
+                if self.monitor.use_recording:
                     self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called",
                                         resource=crane_name, idle=crane.idle, destination=job.next_location,
                                         queue=crane.queue[:])
@@ -827,7 +827,7 @@ class Buffer:
         if operation is not None:
             self.monitor.operations_waiting[operation.id] = operation
 
-        if self.monitor.record_events:
+        if self.monitor.use_recording:
             if operation is not None:
                 self.monitor.record(self.env.now, location=self.name, job=job.name,
                                     operation=operation.name, event="Waiting Started")
@@ -846,7 +846,7 @@ class Buffer:
         if operation is not None:
             del self.monitor.operations_waiting[operation.id]
 
-        if self.monitor.record_events:
+        if self.monitor.use_recording:
             if operation is not None:
                 self.monitor.record(self.env.now, location=self.name, job=job.name,
                                     operation=operation.name, event="Waiting Finished")
@@ -874,7 +874,7 @@ class Buffer:
             crane = self.resources[crane_name]
             crane.add_to_queue((job.id, job.current_location, job.next_location))
 
-            if self.monitor.record_events:
+            if self.monitor.use_recording:
                 self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called",
                                     resource=crane_name, idle=crane.idle, destination=job.next_location,
                                     queue=crane.queue[:])
@@ -918,7 +918,7 @@ class OutputPoint:
         return fully_occupied
 
     def _departure(self, job):
-        if self.monitor.record_events:
+        if self.monitor.use_recording:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Job_Completed")
 
         yield self.env.timeout(0)
@@ -947,13 +947,13 @@ class Sink:
         self.num_jobs_degenerated += 1
         self.completion_time = self.env.now
 
-        if self.monitor.record_events:
+        if self.monitor.use_recording:
             self.monitor.record(self.env.now, location=self.name, job=job.name, event="Job_Degenerated")
 
 
 class Monitor:
-    def __init__(self, record_events=True):
-        self.record_events = record_events
+    def __init__(self, use_recording=True):
+        self.use_recording = use_recording
 
         self.queue_for_machine_scheduling = {}
         self.queue_for_crane_scheduling = None

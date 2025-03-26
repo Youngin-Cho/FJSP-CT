@@ -17,6 +17,7 @@ def get_config():
 
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
+
     parser.add_argument("--random_seed", type=int, default=42, help="random seed")
 
     parser.add_argument("--model_path", type=str, default=None, help="model file path")
@@ -32,9 +33,9 @@ if __name__ == "__main__":
     config = get_config()
 
     use_cuda = torch.cuda.is_available() and not config.no_cuda
-    record_events = not config.no_record
+    use_recording = False if config.no_record else True
+
     random_seed = config.random_seed
-    device = torch.device("cuda" if use_cuda else "cpu")
 
     model_path = config.model_path
     param_path = config.param_path
@@ -67,7 +68,7 @@ if __name__ == "__main__":
                 random.seed(random_seed)
 
                 data_src = data_dir_temp + path
-                env = Factory(data_src, algorithm=name.split("+"), record_events=record_events)
+                env = Factory(data_src, algorithm=name.split("+"), use_recording=use_recording)
 
                 if name == "RL":
                     with open(param_path, 'r') as f:

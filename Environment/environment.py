@@ -23,12 +23,12 @@ class State:
 
 
 class Factory:
-    def __init__(self, data_src, safety_margin=2, device='cpu', algorithm=('RL', 'RL'), record_events=False):
+    def __init__(self, data_src, safety_margin=2, device='cpu', algorithm=('RL', 'RL'), use_recording=False):
         self.data_src = data_src
         self.safety_margin = safety_margin
         self.device = device
         self.algorithm = algorithm
-        self.record_events = record_events
+        self.use_recording = use_recording
 
         if type(data_src) is DataGenerator:
             self.df_operations, self.df_locations, self.df_resources = data_src.generate()
@@ -102,7 +102,7 @@ class Factory:
             current_location = job.current_location
             next_location = self.location_id_to_name[location_id]
 
-            if self.monitor.record_events:
+            if self.monitor.use_recording:
                 self.monitor.record(self.sim_env.now, location=current_location, job=job.name,
                                     next_location=next_location, event="Machine_Allocated")
 
@@ -855,7 +855,7 @@ class Factory:
 
     def _build_model(self):
         sim_env = simpy.Environment()
-        monitor = Monitor(self.record_events)
+        monitor = Monitor(self.use_recording)
 
         jobs = []
         df_operations_group = self.df_operations.groupby(by=["Job_Name", "Job_Index", "Arrival_Date"])
