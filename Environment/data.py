@@ -155,54 +155,60 @@ class DataGenerator:
 
 if __name__ == '__main__':
     import os
+    import json
 
-    num_inputs = 1
-    num_outputs = 1
-    num_machines = 5
-    num_buffers = 2
-    num_jobs = 10
-    num_options_min = 1
-    num_options_max = 5
-    num_operations_min = 4
-    num_operations_max = 6
-    proctime_min = 1
-    proctime_max = 20
-    inter_arrival_time = 4
+    setting = {
+        "num_inputs": 1,
+        "num_outputs": 1,
+        "num_machines": 5,
+        "num_buffers": 2,
+        "num_jobs": 10,
+        "num_options_min": 1,
+        "num_options_max": 5,
+        "num_operations_min": 4,
+        "num_operations_max": 6,
+        "proctime_min": 1,
+        "proctime_max": 20,
+        "inter_arrival_time": 4,
 
-    num_cranes = 2
-    safety_margin = 2
-    x_velocity = 0.5
-    y_velocity = 1.0
+        "num_cranes": 2,
+        "safety_margin": 2,
+        "x_velocity": 0.5,
+        "y_velocity": 1.0,
 
-    num_rows = 1
-    x_spacing = 2
-    y_spacing = 1
-    division = (0, 1, 1, 2, 1, 2, 1, 1, 3)
+        "num_rows": 1,
+        "x_spacing": 1,
+        "y_spacing": 1,
+        "division": (0, 1, 1, 2, 1, 2, 1, 1, 3)
+    }
 
-    file_dir = "../input/validation/%d-%d/" % (num_jobs, num_machines)
+    file_dir = "../input/validation/%d-%d/" % (setting["num_jobs"], setting["num_machines"])
     if not os.path.exists(file_dir):
         os.makedirs(file_dir)
 
-    data_generator = DataGenerator(num_inputs=num_inputs,
-                                   num_outputs=num_outputs,
-                                   num_machines=num_machines,
-                                   num_buffers=num_buffers,
-                                   num_jobs=num_jobs,
-                                   num_options_min=num_options_min,
-                                   num_options_max=num_options_max,
-                                   num_operations_min=num_operations_min,
-                                   num_operations_max=num_operations_max,
-                                   proctime_min=proctime_min,
-                                   proctime_max=proctime_max,
-                                   inter_arrival_time=inter_arrival_time,
-                                   num_cranes=num_cranes,
-                                   safety_margin=safety_margin,
-                                   x_velocity=x_velocity,
-                                   y_velocity=y_velocity,
-                                   num_rows=num_rows,
-                                   x_spacing=x_spacing,
-                                   y_spacing=y_spacing,
-                                   division=division)
+    with open(file_dir + "setting.json", 'w') as f:
+        json.dump(setting, f, indent=4)
+
+    data_generator = DataGenerator(num_inputs=setting["num_inputs"],
+                                   num_outputs=setting["num_outputs"],
+                                   num_machines=setting["num_machines"],
+                                   num_buffers=setting["num_buffers"],
+                                   num_jobs=setting["num_jobs"],
+                                   num_options_min=setting["num_options_min"],
+                                   num_options_max=setting["num_options_max"],
+                                   num_operations_min=setting["num_operations_min"],
+                                   num_operations_max=setting["num_operations_max"],
+                                   proctime_min=setting["proctime_min"],
+                                   proctime_max=setting["proctime_max"],
+                                   inter_arrival_time=setting["inter_arrival_time"],
+                                   num_cranes=setting["num_cranes"],
+                                   safety_margin=setting["safety_margin"],
+                                   x_velocity=setting["x_velocity"],
+                                   y_velocity=setting["y_velocity"],
+                                   num_rows=setting["num_rows"],
+                                   x_spacing=setting["x_spacing"],
+                                   y_spacing=setting["y_spacing"],
+                                   division=setting["division"])
 
     n_instance = 20
     for i in range(1, n_instance + 1):
