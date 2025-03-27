@@ -49,8 +49,8 @@ class FJSPScheduler(nn.Module):
             else:
                 self.critic.append(nn.Linear(embed_dim, 1))
 
-    def act(self, state, mask, current_ops, added_info, greedy=False):
-        x_dict, edge_index_dict = state.x_dict, state.edge_index_dict
+    def act(self, graph_feature, pairwise_feature, mask, current_operations, greedy=False):
+        x_dict, edge_index_dict = graph_feature.x_dict, graph_feature.edge_index_dict
 
         for i in range(self.num_HGT_layers):
             x_dict = self.conv[i](x_dict, edge_index_dict)
@@ -61,7 +61,7 @@ class FJSPScheduler(nn.Module):
 
         h_machines_pooled = h_machines.mean(dim=-2)
         h_ops_pooled = h_ops.mean(dim=-2)
-        jobs_gather = current_ops.unsqueeze(-1).expand(-1, self.embed_dim)
+        jobs_gather = current_operations.unsqueeze(-1).expand(-1, self.embed_dim)
         h_jobs = h_ops.gather(0, jobs_gather)
 
         h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, self.num_nodes["machine"], -1)
@@ -70,7 +70,7 @@ class FJSPScheduler(nn.Module):
         # h_machines_pooled_padding = h_machines_pooled[None, None, :].expand_as(h_machines_padding)
         # h_jobs_pooled_padding = h_jobs_pooled[None, None, :].expand_as(h_jobs_padding)
 
-        h_added = added_info
+        h_added = pairwise_feature
         for i in range(self.num_HGT_layers):
             h_added = self.fc[i](h_added)
             h_added = F.elu(h_added)
@@ -109,9 +109,9 @@ class FJSPScheduler(nn.Module):
 
         return action.item(), action_logprob.item(), state_value.squeeze().item()
 
-    def evaluate(self, batch_state, batch_action, batch_mask, batch_current_ops, batch_added_info):
-        batch_size = batch_state.num_graphs
-        x_dict, edge_index_dict = batch_state.x_dict, batch_state.edge_index_dict
+    def evaluate(self, batch_graph_feature, batch_pairwise_feature, batch_action, batch_mask, batch_current_operations):
+        batch_size = batch_graph_feature.num_graphs
+        x_dict, edge_index_dict = batch_graph_feature.x_dict, batch_graph_feature.edge_index_dict
 
         for i in range(self.num_HGT_layers):
             x_dict = self.conv[i](x_dict, edge_index_dict)
@@ -122,7 +122,7 @@ class FJSPScheduler(nn.Module):
 
         h_machines_pooled = h_machines.mean(dim=-2)
         h_ops_pooled = h_ops.mean(dim=-2)
-        jobs_gather = batch_current_ops.unsqueeze(-1).expand(-1, -1, self.embed_dim)
+        jobs_gather = batch_current_operations.unsqueeze(-1).expand(-1, -1, self.embed_dim)
         h_jobs = h_ops.gather(1, jobs_gather)
 
         h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, -1, self.num_nodes["machine"], -1)
@@ -131,7 +131,7 @@ class FJSPScheduler(nn.Module):
         # h_machines_pooled_padding = h_machines_pooled[:, None, None, :].expand_as(h_machines_padding)
         # h_jobs_pooled_padding = h_jobs_pooled[:, None, None, :].expand_as(h_jobs_padding)
 
-        h_added = batch_added_info
+        h_added = batch_pairwise_feature
         for i in range(self.num_HGT_layers):
             h_added = self.fc[i](h_added)
             h_added = F.elu(h_added)

@@ -11,7 +11,8 @@ from Environment.data import DataGenerator
 from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
 from Agent.CraneTransportation.heuristic import CTHeuristic
 from Agent.FlexibleJobShop.ppo import FJSPAgent
-from Agent.CraneTransportation.ppo import CTAgent
+# from Agent.CraneTransportation.ppo import CTAgent
+from validate import evaluate
 
 
 def get_config():
@@ -171,30 +172,31 @@ if __name__ == "__main__":
                                device=device)
 
     else:
-        fjsp_agent = FJSPHeuristic()
+        fjsp_agent = FJSPHeuristic(fjsp_algorithm)
 
     if ct_algorithm == "RL":
-        ct_agent = CTAgent(meta_data=env.ct_meta_data,
-                           state_size=env.ct_state_size,
-                           num_nodes=env.ct_num_nodes,
-                           embed_dim=embed_dim,
-                           num_heads=num_heads,
-                           num_HGT_layers=num_HGT_layers,
-                           num_actor_layers=num_actor_layers,
-                           num_critic_layers=num_critic_layers,
-                           lr=lr,
-                           lr_decay=lr_decay,
-                           lr_step=lr_step,
-                           gamma=gamma,
-                           lmbda=lmbda,
-                           eps_clip=eps_clip,
-                           K_epoch=K_epoch,
-                           P_coeff=P_coeff,
-                           V_coeff=V_coeff,
-                           E_coeff=E_coeff,
-                           device=device)
+        pass
+        # ct_agent = CTAgent(meta_data=env.ct_meta_data,
+        #                    state_size=env.ct_state_size,
+        #                    num_nodes=env.ct_num_nodes,
+        #                    embed_dim=embed_dim,
+        #                    num_heads=num_heads,
+        #                    num_HGT_layers=num_HGT_layers,
+        #                    num_actor_layers=num_actor_layers,
+        #                    num_critic_layers=num_critic_layers,
+        #                    lr=lr,
+        #                    lr_decay=lr_decay,
+        #                    lr_step=lr_step,
+        #                    gamma=gamma,
+        #                    lmbda=lmbda,
+        #                    eps_clip=eps_clip,
+        #                    K_epoch=K_epoch,
+        #                    P_coeff=P_coeff,
+        #                    V_coeff=V_coeff,
+        #                    E_coeff=E_coeff,
+        #                    device=device)
     else:
-        ct_agent = CTHeuristic()
+        ct_agent = CTHeuristic(ct_algorithm)
 
     if not use_vessl:
         writer = SummaryWriter(log_dir)
@@ -219,56 +221,100 @@ if __name__ == "__main__":
 
     for e in range(start_episode, n_episode + 1):
         if use_vessl:
-            vessl.log(payload={"Train/LearnigRate": agent.scheduler.get_last_lr()[0]}, step=e)
+            if fjsp_algorithm == "RL":
+                vessl.log(payload={"Train/LearnigRate": fjsp_agent.scheduler.get_last_lr()[0]}, step=e)
+            if ct_algorithm == "RL":
+                vessl.log(payload={"Train/LearnigRate": ct_agent.scheduler.get_last_lr()[0]}, step=e)
         else:
-            writer.add_scalar("Training/LearningRate", agent.scheduler.get_last_lr()[0], e)
+            if fjsp_algorithm == "RL":
+                writer.add_scalar("Training/LearningRate", fjsp_agent.scheduler.get_last_lr()[0], e)
+            if ct_algorithm == "RL":
+                writer.add_scalar("Training/LearningRate", ct_agent.scheduler.get_last_lr()[0], e)
 
         step = 0
         episode_reward = 0.0
-        avg_loss = 0.0
+        episode_average_loss = 0.0
 
-        state = env.reset()
+        fjsp_state = env.reset()
 
         while True:
             for t in range(T_horizon * 2):
                 if env.scheduling_mode == "machine":
-                    action, action_logprob, state_value = fjsp_agent.get_action(state)
+                    if fjsp_algorithm == "RL":
+                        fjsp_action, fjsp_log_prob, fjsp_value = fjsp_agent.get_action(fjsp_state)
+                    else:
+                        fjsp_action = fjsp_agent.act(fjsp_state)
+
+                    next_ct_state, reward, done = env.step(fjsp_action)
                 else:
-                    action, action_logprob, state_value = ct_agent.get_action(state)
+                    if ct_algorithm == "RL":
+                        ct_action, ct_log_prob, ct_value = ct_agent.get_action(ct_state)
+                    else:
+                        ct_action = ct_agent.act(ct_state)
 
-                next_state, reward, done = env.step(action)
+                    next_fjsp_state, reward, done = env.step(ct_action)
 
-                agent.put_data((state, action, reward, next_state, action_logprob, state_value, done))
-                state = next_state
+                if env.scheduling_mode == "machine":
+                    ct_state = next_ct_state
+                else:
+                    if fjsp_algorithm == "RL":
+                        fjsp_agent.put_sample(fjsp_state, fjsp_action, reward, done, fjsp_log_prob, fjsp_value)
+                    if ct_algorithm == "RL":
+                        ct_agent.put_sample(fjsp_state, ct_action, reward, done, ct_log_prob, ct_value)
+
+                    fjsp_state = next_fjsp_state
 
                 episode_reward += reward
 
                 if done:
                     break
 
+            if fjsp_algorithm == "RL":
+                if done:
+                    last_value = 0.0
+                else:
+                    _, _, last_value = fjsp_agent.get_action(fjsp_state)
+
+                episode_average_loss += fjsp_agent.train(last_value)
+
+            if ct_algorithm == "RL":
+                if done:
+                    last_value = 0.0
+                else:
+                    fjsp_action = fjsp_agent.act(fjsp_state)
+                    next_ct_state, reward, done = env.step(fjsp_action)
+                    ct_state = next_ct_state
+
+                    _, _, last_value = ct_agent.get_action(ct_state)
+
+                episode_average_loss += ct_agent.train(last_value)
+
             step += 1
-            avg_loss += agent.train()
 
-        if fjsp_algorithm == "RL":
-            fjsp_agent.scheduler.step()
-        if ct_algorithm == "RL":
-            ct_agent.scheduler.step()
+            if done:
+                break
 
-        print("episode: %d | reward: %.4f | loss: %.4f" % (e, episode_reward, avg_loss / step))
+        print("episode: %d | reward: %.4f | loss: %.4f" % (e, episode_reward, episode_average_loss / step))
         with open(log_dir + "train_log.csv", 'a') as f:
             if fjsp_algorithm == "RL":
                 f.write('%d, %1.4f, %1.4f, %f\n'
-                        % (e, episode_reward, avg_loss, fjsp_agent.scheduler.get_last_lr()[0]))
+                        % (e, episode_reward, episode_average_loss, fjsp_agent.scheduler.get_last_lr()[0]))
             if ct_algorithm == "RL":
                 f.write('%d, %1.4f, %1.4f, %f\n'
-                        % (e, episode_reward, avg_loss, ct_agent.scheduler.get_last_lr()[0]))
+                        % (e, episode_reward, episode_average_loss, ct_agent.scheduler.get_last_lr()[0]))
 
         if use_vessl:
             vessl.log(payload={"Train/Reward": episode_reward,
-                               "Train/Loss": avg_loss / step}, step=e)
+                               "Train/Loss": episode_average_loss / step}, step=e)
         else:
             writer.add_scalar("Training/Reward", episode_reward, e)
-            writer.add_scalar("Training/Loss", avg_loss / step, e)
+            writer.add_scalar("Training/Loss", episode_average_loss / step, e)
+
+        if fjsp_algorithm == "RL":
+            fjsp_agent.scheduler.step()
+
+        if ct_algorithm == "RL":
+            ct_agent.scheduler.step()
 
         if e == start_episode or e % eval_every == 0:
             average_makespan = evaluate(fjsp_agent, ct_agent, val_dir)
@@ -276,14 +322,16 @@ if __name__ == "__main__":
             with open(log_dir + "validation_log.csv", 'a') as f:
                 f.write('%d,%1.4f\n' % (e, average_makespan))
 
-            if cfg.vessl == 1:
+            if use_vessl:
                 vessl.log(payload={"Perf/Makespan": average_makespan}, step=e)
-            elif cfg.vessl == 0:
+            else:
                 writer.add_scalar("Validation/Makespan", average_makespan, e)
 
         if e % save_every == 0:
-            fjsp_agent.save_network(e, model_dir)
-            ct_agent.save_network(e, model_dir)
+            if fjsp_algorithm == "RL":
+                fjsp_agent.save_network(e, model_dir)
+            if ct_algorithm == "RL":
+                ct_agent.save_network(e, model_dir)
 
         if e % new_instance_every == 0:
             env = Factory(data_src,
