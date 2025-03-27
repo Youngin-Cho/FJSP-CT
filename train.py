@@ -34,7 +34,7 @@ def get_config():
     parser.add_argument("--num_actor_layers", type=int, default=2, help="number of actor layers")
     parser.add_argument("--num_critic_layers", type=int, default=2, help="number of critic layers")
 
-    parser.add_argument("--n_episodes", type=int, default=10000, help="number of episodes")
+    parser.add_argument("--num_episodes", type=int, default=10000, help="number of episodes")
     parser.add_argument("--lr", type=float, default=0.00005, help="learning rate")
     parser.add_argument("--lr_decay", type=float, default=1.0, help="learning rate decay ratio")
     parser.add_argument("--lr_step", type=int, default=100, help="step size to reduce learning rate")
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     num_critic_layers = config.num_critic_layers
 
     # 강화학습 알고리즘 관련 파라미터
-    n_episode = config.n_episode
+    num_episodes = config.num_episodes
     lr = config.lr
     lr_decay = config.lr_decay
     lr_step = config.lr_step
@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
     eval_every = config.eval_every
     save_every = config.save_every
-    new_instance_every = config.new_instance_every
+    reset_every = config.reset_every
 
     val_dir = config.val_dir
 
@@ -219,7 +219,7 @@ if __name__ == "__main__":
     with open(log_dir + "validation_log.csv", 'w') as f:
         f.write('episode, makespan\n')
 
-    for e in range(start_episode, n_episode + 1):
+    for e in range(start_episode, num_episodes + 1):
         if use_vessl:
             if fjsp_algorithm == "RL":
                 vessl.log(payload={"Train/LearnigRate": fjsp_agent.scheduler.get_last_lr()[0]}, step=e)
@@ -333,7 +333,7 @@ if __name__ == "__main__":
             if ct_algorithm == "RL":
                 ct_agent.save_network(e, model_dir)
 
-        if e % new_instance_every == 0:
+        if e % reset_every == 0:
             env = Factory(data_src,
                           algorithm=(fjsp_algorithm, ct_algorithm),
                           use_recording=use_recording)

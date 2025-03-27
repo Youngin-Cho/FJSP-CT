@@ -376,11 +376,11 @@ class Factory:
             machine_scheduling_algorithm = self.algorithm[0]
 
             if machine_scheduling_algorithm == "RL":
-                fea_operation = np.zeros((self.num_operations, self.input_dim_operation))
-                fea_machine = np.zeros((self.num_machines, self.input_dim_machine))
-                fea_buffer = np.zeros((self.num_buffers, self.input_dim_buffer))
-                fea_output = np.zeros((self.num_outputpoints, self.input_dim_output))
-                fea_pair = np.zeros((self.num_jobs, self.num_machines + self.num_buffers + self.num_outputpoints, self.input_dim_pair))
+                operation_feature = np.zeros((self.num_operations, self.input_dim_operation))
+                machine_feature = np.zeros((self.num_machines, self.input_dim_machine))
+                buffer_feature = np.zeros((self.num_buffers, self.input_dim_buffer))
+                output_feature = np.zeros((self.num_outputpoints, self.input_dim_output))
+                pairwise_feature = np.zeros((self.num_jobs, self.num_machines + self.num_buffers + self.num_outputpoints, self.input_dim_pair))
                 current_operations = np.zeros(self.num_jobs)
 
                 edge_predecessor, edge_successor = [[], []], [[], []]
@@ -452,8 +452,8 @@ class Factory:
                         f4 = np.sum(job_proctime[k:]) # / (len(job.operations) - k)
                         f5 = len(eligible_options) / self.num_machines
 
-                        fea_operation[operation.id, :3] = f0
-                        fea_operation[operation.id, 3:] = [f1, f2, f3, f4, f5]
+                        operation_feature[operation.id, :3] = f0
+                        operation_feature[operation.id, 3:] = [f1, f2, f3, f4, f5]
 
                 # Location Feature
                 proctime_remaining = proctime_remaining[proctime_remaining_mask]
@@ -501,22 +501,22 @@ class Factory:
                             f4 = available_time - self.sim_env.now
                             f5 = (self.sim_env.now - location.completion_time) if not fully_occupied else 0
 
-                            fea_machine[location.local_id, :2] = f0
-                            fea_machine[location.local_id, 2:4] = f1
-                            fea_machine[location.local_id, 4:] = [f2, f3, f4, f5]
+                            machine_feature[location.local_id, :2] = f0
+                            machine_feature[location.local_id, 2:4] = f1
+                            machine_feature[location.local_id, 4:] = [f2, f3, f4, f5]
 
                         elif location.category == 2:
-                            fea_buffer[location.local_id, :2] = f0
-                            fea_buffer[location.local_id, 2:4] = f1
+                            buffer_feature[location.local_id, :2] = f0
+                            buffer_feature[location.local_id, 2:4] = f1
 
                         else:
-                            fea_output[location.local_id, :2] = f0
-                            fea_output[location.local_id, 2:4] = f1
+                            output_feature[location.local_id, :2] = f0
+                            output_feature[location.local_id, 2:4] = f1
 
                 if int(np.max(available_time_list) - self.sim_env.now) != 0:
-                    fea_machine[:, 6] = fea_machine[:, 6] / (np.max(available_time_list) - self.sim_env.now)
-                fea_machine[:, 7] = fea_machine[:, 7] / np.max(fea_machine[:, 7]) \
-                    if np.max(fea_machine[:, 7]) > 0.0 else 0.0
+                    machine_feature[:, 6] = machine_feature[:, 6] / (np.max(available_time_list) - self.sim_env.now)
+                machine_feature[:, 7] = machine_feature[:, 7] / np.max(machine_feature[:, 7]) \
+                    if np.max(machine_feature[:, 7]) > 0.0 else 0.0
 
                 # Pair Feature
                 tag = np.array([(temp >= 0).any() for temp in proctime_compatible])
@@ -566,11 +566,11 @@ class Factory:
                                         f6 = proctime / np.max(proctime_compatible) \
                                             if np.max(proctime_compatible, initial=0) > 0 else 0
 
-                                        fea_pair[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, f3, f4, f5, f6]
+                                        pairwise_feature[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, f3, f4, f5, f6]
                                     else:
-                                        fea_pair[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, 0, 0, 0, 0]
+                                        pairwise_feature[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, 0, 0, 0, 0]
                             else:
-                                fea_pair[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, 0, 0, 0, 0]
+                                pairwise_feature[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, 0, 0, 0, 0]
 
                 # Edge Construction
                 for j in self.df_operations["Job_Index"].unique():
@@ -621,10 +621,10 @@ class Factory:
                                     edge_output_to_operation[0].append(location.local_id)
                                     edge_output_to_operation[1].append(operation.id)
 
-                fea_operation = torch.from_numpy(fea_operation).type(torch.float32).to(self.device)
-                fea_machine = torch.from_numpy(fea_machine).type(torch.float32).to(self.device)
-                fea_buffer = torch.from_numpy(fea_buffer).type(torch.float32).to(self.device)
-                fea_output = torch.from_numpy(fea_output).type(torch.float32).to(self.device)
+                operation_feature = torch.from_numpy(operation_feature).type(torch.float32).to(self.device)
+                machine_feature = torch.from_numpy(machine_feature).type(torch.float32).to(self.device)
+                buffer_feature = torch.from_numpy(buffer_feature).type(torch.float32).to(self.device)
+                output_feature = torch.from_numpy(output_feature).type(torch.float32).to(self.device)
                 edge_predecessor = torch.from_numpy(np.array(edge_predecessor)).type(torch.long).to(self.device)
                 edge_successor = torch.from_numpy(np.array(edge_successor)).type(torch.long).to(self.device)
                 edge_operation_to_machine = torch.from_numpy(np.array(edge_operation_to_machine)).type(torch.long).to(self.device)
@@ -635,10 +635,10 @@ class Factory:
                 edge_output_to_operation = torch.from_numpy(np.array(edge_output_to_operation)).type(torch.long).to(self.device)
 
                 graph_feature = HeteroData()
-                graph_feature["operation"].x = fea_operation
-                graph_feature["machine"].x = fea_machine
-                graph_feature["buffer"].x = fea_buffer
-                graph_feature["output"].x = fea_output
+                graph_feature["operation"].x = operation_feature
+                graph_feature["machine"].x = machine_feature
+                graph_feature["buffer"].x = buffer_feature
+                graph_feature["output"].x = output_feature
                 graph_feature["operation", "predecessor", "operation"].edge_index = edge_predecessor
                 graph_feature["operation", "successor", "operation"].edge_index = edge_successor
                 graph_feature["operation", "operation_to_machine", "machine"].edge_index = edge_operation_to_machine
@@ -647,6 +647,9 @@ class Factory:
                 graph_feature["buffer", "buffer_to_operation", "operation"].edge_index = edge_buffer_to_operation
                 graph_feature["operation", "operation_to_output", "output"].edge_index = edge_operation_to_output
                 graph_feature["output", "output_to_operation", "operation"].edge_index = edge_output_to_operation
+
+                pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
+                current_operations = torch.from_numpy(current_operations).type(torch.long).to(self.device)
 
             else:
                 num_rows = self.num_machines + self.num_buffers + self.num_outputpoints
@@ -777,7 +780,7 @@ class Factory:
 
             if self.algorithm[0] == "RL":
                 state.update(graph_feature=graph_feature,
-                             pairwise_feature=fea_pair,
+                             pairwise_feature=pairwise_feature,
                              current_operations=current_operations,
                              mask=mask)
             else:
@@ -790,7 +793,7 @@ class Factory:
 
             if self.algorithm[1] == "RL":
                 state.update(graph_feature=graph_feature,
-                             pairwise_feature=fea_pair,
+                             pairwise_feature=pairwise_feature,
                              mask=mask)
             else:
                 state.update(priority_idx=priority_idx,
