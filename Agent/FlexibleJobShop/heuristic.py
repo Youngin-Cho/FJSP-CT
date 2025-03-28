@@ -7,7 +7,7 @@ class FJSPHeuristic:
 
     def act(self, state):
         priority_idx = state.priority_idx.flatten()
-        mask = state.mask.flatten()
+        mask = state.mask.transpose(0, 1).flatten()
         priority_idx[~mask] = 0.0
 
         candidates = np.where(priority_idx == np.max(priority_idx))[0]

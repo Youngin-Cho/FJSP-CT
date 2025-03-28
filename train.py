@@ -239,7 +239,9 @@ if __name__ == "__main__":
 
         while True:
             for t in range(T_horizon * 2):
-                if env.scheduling_mode == "machine":
+                mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
+
+                if mode == "fjsp":
                     if fjsp_algorithm == "RL":
                         fjsp_action, fjsp_log_prob, fjsp_value = fjsp_agent.get_action(fjsp_state)
                     else:
@@ -254,7 +256,7 @@ if __name__ == "__main__":
 
                     next_fjsp_state, reward, done = env.step(ct_action)
 
-                if env.scheduling_mode == "machine":
+                if mode == "fjsp":
                     ct_state = next_ct_state
                 else:
                     if fjsp_algorithm == "RL":

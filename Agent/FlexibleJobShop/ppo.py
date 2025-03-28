@@ -117,7 +117,8 @@ class FJSPAgent:
             action, log_prob, value = self.network.act(graph_feature=state.graph_feature,
                                                        pairwise_feature=state.pairwise_feature,
                                                        mask=state.mask,
-                                                       current_operations=state.current_operations)
+                                                       current_operations=state.current_operations,
+                                                       reorder_idx=state.reorder_idx)
         return action, log_prob, value
 
     def train(self, last_value):

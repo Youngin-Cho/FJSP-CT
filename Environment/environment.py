@@ -18,6 +18,7 @@ class State:
             self.pairwise_feature = None
             self.mask = None
             self.current_operations = None
+            self.reorder_idx = None
         else:
             self.priority_idx = None
             self.mask = None
@@ -27,6 +28,7 @@ class State:
                pairwise_feature=None,
                priority_idx=None,
                current_operations=None,
+               reorder_idx=None,
                mask=None):
 
         if self.algorithm == "RL":
@@ -34,6 +36,7 @@ class State:
             self.pairwise_feature = pairwise_feature
             self.mask = mask
             self.current_operations = current_operations if current_operations is not None else None
+            self.reorder_idx = reorder_idx if reorder_idx is not None else None
         else:
             self.priority_idx = priority_idx
             self.mask = mask
@@ -112,8 +115,8 @@ class Factory:
 
     def step(self, action):
         if self.scheduling_mode == "machine":
-            location_id = action // self.num_jobs + self.num_inputpoints
-            job_id = action % self.num_jobs
+            location_id = action % (self.num_machines + self.num_buffers + self.num_outputpoints) + self.num_inputpoints
+            job_id = action // (self.num_machines + self.num_buffers + self.num_outputpoints)
 
             job = self.monitor.remove_from_queue(job_id, scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
@@ -382,6 +385,7 @@ class Factory:
                 output_feature = np.zeros((self.num_outputpoints, self.input_dim_output))
                 pairwise_feature = np.zeros((self.num_jobs, self.num_machines + self.num_buffers + self.num_outputpoints, self.input_dim_pair))
                 current_operations = np.zeros(self.num_jobs)
+                reorder_idx = np.zeros(self.num_machines + self.num_buffers + self.num_outputpoints)
 
                 edge_predecessor, edge_successor = [[], []], [[], []]
                 edge_machine_to_operation, edge_operation_to_machine = [[], []], [[], []]
@@ -483,6 +487,8 @@ class Factory:
                               ycoord / self.y_max if self.y_max != 0 else 0]
 
                         if location.category == 1:
+                            reorder_idx[location.global_id - self.num_inputpoints] = location.local_id
+
                             if fully_occupied:
                                 proctime_compatible[:, location.local_id] = -1
 
@@ -506,10 +512,16 @@ class Factory:
                             machine_feature[location.local_id, 4:] = [f2, f3, f4, f5]
 
                         elif location.category == 2:
+                            reorder_idx[location.global_id - self.num_inputpoints] \
+                                = self.num_machines + location.local_id
+
                             buffer_feature[location.local_id, :2] = f0
                             buffer_feature[location.local_id, 2:4] = f1
 
                         else:
+                            reorder_idx[location.global_id - self.num_inputpoints] \
+                                = self.num_machines + self.num_buffers + location.local_id
+
                             output_feature[location.local_id, :2] = f0
                             output_feature[location.local_id, 2:4] = f1
 
@@ -542,33 +554,33 @@ class Factory:
                             if location.category == 1:
                                 fully_occupied = location.check_status()
 
-                                if (not fully_occupied) and (not skip):
+                                proctime = current_operation.get_processing_time(location.local_id)
+                                proctime = (proctime - self.proctime_min) / (self.proctime_max - self.proctime_min)
+
+                                if (not fully_occupied) and (not skip) and (proctime >= 0):
                                     options = current_operation.options
                                     options = (options - self.proctime_min) / (self.proctime_max - self.proctime_min)
-                                    proctime = current_operation.get_processing_time(location.local_id)
-                                    proctime = (proctime - self.proctime_min) / (self.proctime_max - self.proctime_min)
 
-                                    if proctime >= 0:
-                                        proctime_compatible_copy = copy.copy(proctime_compatible)
-                                        proctime_compatible_copy[:, location.local_id] = -1
-                                        # num_compatible_pairs = len(proctime_compatible[proctime_compatible >= 0])
-                                        # num_compatible_pairs_updated \
-                                        #     = len(proctime_compatible_copy[proctime_compatible_copy >= 0])
-                                        # min_proctime_compatible \
-                                        #     = np.array([np.min(temp[temp >= 0]) for temp in proctime_compatible])
-                                        # min_proctime_compatible_updated \
-                                        #     = np.array([np.min(temp[temp >= 0]) for temp in proctime_compatible_copy])
+                                    proctime_compatible_copy = copy.copy(proctime_compatible)
+                                    proctime_compatible_copy[:, location.local_id] = -1
+                                    # num_compatible_pairs = len(proctime_compatible[proctime_compatible >= 0])
+                                    # num_compatible_pairs_updated \
+                                    #     = len(proctime_compatible_copy[proctime_compatible_copy >= 0])
+                                    # min_proctime_compatible \
+                                    #     = np.array([np.min(temp[temp >= 0]) for temp in proctime_compatible])
+                                    # min_proctime_compatible_updated \
+                                    #     = np.array([np.min(temp[temp >= 0]) for temp in proctime_compatible_copy])
 
-                                        f3 = proctime
-                                        f4 = proctime / np.max(options)
-                                        f5 = proctime / np.max(proctime_compatible[:, location.local_id]) \
-                                            if np.max(proctime_compatible[:, location.local_id], initial=0) > 0 else 0
-                                        f6 = proctime / np.max(proctime_compatible) \
-                                            if np.max(proctime_compatible, initial=0) > 0 else 0
+                                    f3 = proctime
+                                    f4 = proctime / np.max(options) if np.max(options) > 0 else 1
+                                    f5 = proctime / np.max(proctime_compatible[:, location.local_id]) \
+                                        if np.max(proctime_compatible[:, location.local_id]) > 0 else 1
+                                    f6 = proctime / np.max(proctime_compatible) \
+                                        if np.max(proctime_compatible) > 0 else 1
 
-                                        pairwise_feature[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, f3, f4, f5, f6]
-                                    else:
-                                        pairwise_feature[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, 0, 0, 0, 0]
+                                    pairwise_feature[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, f3, f4, f5, f6]
+                                else:
+                                    pairwise_feature[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, 0, 0, 0, 0]
                             else:
                                 pairwise_feature[job.id, location.global_id - self.num_inputpoints, :] = [f1, f2, 0, 0, 0, 0]
 
@@ -650,10 +662,11 @@ class Factory:
 
                 pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
                 current_operations = torch.from_numpy(current_operations).type(torch.long).to(self.device)
+                reorder_idx = torch.from_numpy(reorder_idx).type(torch.long).to(self.device)
 
             else:
-                num_rows = self.num_machines + self.num_buffers + self.num_outputpoints
-                num_columns = self.num_jobs
+                num_rows = self.num_jobs
+                num_columns = self.num_machines + self.num_buffers + self.num_outputpoints
 
                 priority_idx = np.zeros((num_rows, num_columns))
 
@@ -664,13 +677,13 @@ class Factory:
                             if location.category == 1:
                                 if operation is not None:
                                     proctime = operation.get_processing_time(location.local_id)
-                                    priority_idx[location.global_id - self.num_inputpoints, job.id] \
-                                        = 1 / proctime if proctime > 0 else 1
+                                    priority_idx[job.id, location.global_id - self.num_inputpoints] \
+                                        = 1 / proctime if proctime > 0 else 0
                             elif location.category == 2:
-                                priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
+                                priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
                             elif location.category == 3:
                                 if operation is None:
-                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
+                                    priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
 
                 elif machine_scheduling_algorithm == "MOR":
                     for job in self.monitor.queue_for_machine_scheduling.values():
@@ -678,12 +691,12 @@ class Factory:
                         for location in self.locations.values():
                             if location.category == 1:
                                 if remaining_operations > 0:
-                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = remaining_operations
+                                    priority_idx[job.id, location.global_id - self.num_inputpoints] = remaining_operations
                             elif location.category == 2:
-                                priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
+                                priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
                             elif location.category == 3:
                                 if remaining_operations == 0:
-                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
+                                    priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
 
                 elif machine_scheduling_algorithm == "MWKR":
                     for job in self.monitor.queue_for_machine_scheduling.values():
@@ -695,12 +708,12 @@ class Factory:
                         for location in self.locations.values():
                             if location.category == 1:
                                 if remaining_work > 0.0:
-                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = remaining_work
+                                    priority_idx[job.id, location.global_id - self.num_inputpoints] = remaining_work
                             elif location.category == 2:
-                                priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
+                                priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
                             elif location.category == 3:
                                 if remaining_work == 0.0:
-                                    priority_idx[location.global_id - self.num_inputpoints, job.id] = 1
+                                    priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
 
                 elif machine_scheduling_algorithm == "RAND":
                     priority_idx[:, :] = 1.0
@@ -782,6 +795,7 @@ class Factory:
                 state.update(graph_feature=graph_feature,
                              pairwise_feature=pairwise_feature,
                              current_operations=current_operations,
+                             reorder_idx=reorder_idx,
                              mask=mask)
             else:
                 state.update(priority_idx=priority_idx,
@@ -975,7 +989,7 @@ if __name__ == "__main__":
     while True:
         if env.scheduling_mode == "machine":
             # action = fjsp_agent.act(state)
-            mask = state.mask.flatten()
+            mask = state.mask.transpose(0, 1).flatten()
             candidates = np.where(mask == True)[0]
             action = np.random.choice(candidates)
         else:
