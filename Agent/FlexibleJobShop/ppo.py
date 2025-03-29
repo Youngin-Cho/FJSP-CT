@@ -1,6 +1,7 @@
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
+import numpy as np
 
 from torch.optim.lr_scheduler import StepLR
 from torch_geometric.data import Batch
@@ -16,6 +17,7 @@ class RollOutMemory:
         self.pairwise_features = []
         self.masks = []
         self.current_operations = []
+        self.reorder_idxs = []
 
         # other variables
         self.actions = []
@@ -30,6 +32,7 @@ class RollOutMemory:
         del self.pairwise_features[:]
         del self.masks[:]
         del self.current_operations[:]
+        del self.reorder_idxs[:]
 
         # other variables
         del self.actions[:]
@@ -44,29 +47,31 @@ class RollOutMemory:
         self.pairwise_features.append(state.pairwise_feature)
         self.masks.append(state.mask)
         self.current_operations.append(state.current_operations)
+        self.reorder_idxs.append(state.reorder_idx)
 
         # other variables
-        self.actions.append(action)
-        self.rewards.append(reward)
-        self.dones.append(not done)
-        self.values.append(value)
-        self.log_probs.append(log_prob)
+        self.actions.append([action])
+        self.rewards.append([reward])
+        self.dones.append([not done])
+        self.values.append([value])
+        self.log_probs.append([log_prob])
 
     def get(self, last_value):
-        self.values.append(last_value)
+        self.values.append([last_value])
 
         graph_features = Batch.from_data_list(self.graph_features).to(self.device)
-        pairwise_features = torch.FloatTensor(self.pairwise_features).to(self.device)
-        masks = torch.BoolTensor(self.masks).to(self.device)
-        current_operations = torch.LongTensor(self.current_operations).to(self.device)
+        pairwise_features = torch.from_numpy(np.array(self.pairwise_features)).type(torch.float32).to(self.device)
+        masks = torch.from_numpy(np.array(self.masks)).type(torch.bool).to(self.device)
+        current_operations = torch.from_numpy(np.array(self.current_operations)).type(torch.long).to(self.device)
+        reorder_idxs = torch.from_numpy(np.array(self.reorder_idxs)).type(torch.long).to(self.device)
 
-        actions = torch.LongTensor(self.actions).to(self.device)
-        rewards = torch.FloatTensor(self.rewards).to(self.device)
-        dones = torch.FloatTensor(self.dones).to(self.device)
-        values = torch.FloatTensor(self.values[1:]).to(self.device)
-        log_probs = torch.FloatTensor(self.log_probs).to(self.device)
+        actions = torch.from_numpy(np.array(self.actions)).type(torch.long).to(self.device)
+        rewards = torch.from_numpy(np.array(self.rewards)).type(torch.float32).to(self.device)
+        dones = torch.from_numpy(np.array(self.dones)).type(torch.float32).to(self.device)
+        values = torch.from_numpy(np.array(self.values[1:])).type(torch.float32).to(self.device)
+        log_probs = torch.from_numpy(np.array(self.log_probs)).type(torch.float32).to(self.device)
 
-        return (graph_features, pairwise_features, masks, current_operations,
+        return (graph_features, pairwise_features, masks, current_operations, reorder_idxs,
                 actions, rewards, values, dones, log_probs)
 
 
@@ -124,7 +129,8 @@ class FJSPAgent:
     def train(self, last_value):
         self.network.train()
 
-        graph_features, pairwise_features, masks, current_operations, actions, rewards, values, dones, log_probs \
+        (graph_features, pairwise_features, masks, current_operations, reorder_idxs,
+         actions, rewards, values, dones, log_probs) \
             = self.memory.get(last_value)
 
         avg_loss = 0.0
@@ -146,7 +152,8 @@ class FJSPAgent:
                                         batch_pairwise_feature=pairwise_features,
                                         batch_action=actions,
                                         batch_mask=masks,
-                                        batch_current_operations=current_operations)
+                                        batch_current_operations=current_operations,
+                                        batch_reorder_idxs=reorder_idxs)
 
             ratio = torch.exp(new_log_probs - log_probs)
 
@@ -161,6 +168,8 @@ class FJSPAgent:
             self.optimizer.step()
 
             avg_loss += loss.mean().item()
+
+        self.memory.clear()
 
         return avg_loss / self.K_epoch
 

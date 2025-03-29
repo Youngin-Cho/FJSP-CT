@@ -15,20 +15,37 @@ def evaluate(fjsp_agent, ct_agent, val_dir):
 
     with torch.no_grad():
         for path in val_paths:
+            if path.split(".")[-1] != "xlsx":
+                continue
+
             env = Factory(val_dir + path,
                           algorithm=(fjsp_agent.name, ct_agent.name),
                           use_recording=False)
 
-            state = env.reset()
+            fjsp_state = env.reset()
 
             while True:
-                if env.scheduling_mode == "machine":
-                    action = fjsp_agent.act(state)
-                else:
-                    action = ct_agent.act(state)
+                mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
 
-                next_state, reward, done = env.step(action)
-                state = next_state
+                if mode == "fjsp":
+                    if fjsp_agent.name == "RL":
+                        fjsp_action, _, _ = fjsp_agent.get_action(fjsp_state)
+                    else:
+                        fjsp_action = fjsp_agent.act(fjsp_state)
+
+                    next_ct_state, reward, done = env.step(fjsp_action)
+                else:
+                    if ct_agent.name == "RL":
+                        ct_action, _, _ = ct_agent.get_action(ct_state)
+                    else:
+                        ct_action = ct_agent.act(ct_state)
+
+                    next_fjsp_state, reward, done = env.step(ct_action)
+
+                if mode == "fjsp":
+                    ct_state = next_ct_state
+                else:
+                    fjsp_state = next_fjsp_state
 
                 if done:
                     break

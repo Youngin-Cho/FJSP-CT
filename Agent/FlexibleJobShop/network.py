@@ -92,13 +92,9 @@ class FJSPScheduler(nn.Module):
             else:
                 logits = self.actor[i](h_actions).flatten()
 
-        logits_saved = logits.numpy()
         mask = mask.transpose(0, 1).flatten()
         logits[~mask] = float('-inf')
         probs = F.softmax(logits, dim=-1)
-
-        if torch.isnan(probs).any():
-            print(0)
 
         dist = Categorical(probs)
 
@@ -121,7 +117,7 @@ class FJSPScheduler(nn.Module):
 
         return action.item(), action_logprob.item(), state_value.squeeze().item()
 
-    def evaluate(self, batch_graph_feature, batch_pairwise_feature, batch_action, batch_mask, batch_current_operations):
+    def evaluate(self, batch_graph_feature, batch_pairwise_feature, batch_action, batch_mask, batch_current_operations, batch_reorder_idxs):
         batch_size = batch_graph_feature.num_graphs
         x_dict, edge_index_dict = batch_graph_feature.x_dict, batch_graph_feature.edge_index_dict
 
@@ -130,15 +126,20 @@ class FJSPScheduler(nn.Module):
             x_dict = {key: F.elu(x) for key, x in x_dict.items()}
 
         h_machines = x_dict["machine"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
-        h_ops = x_dict["operation"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
+        h_buffers = x_dict["buffer"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
+        h_outputs = x_dict["output"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
+        h_locations = torch.cat([h_machines, h_buffers, h_outputs], dim=1)
+        h_locations = torch.index_select(h_locations, 1, batch_reorder_idxs[0])
 
-        h_machines_pooled = h_machines.mean(dim=-2)
-        h_ops_pooled = h_ops.mean(dim=-2)
+        h_ops = x_dict["operation"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
         jobs_gather = batch_current_operations.unsqueeze(-1).expand(-1, -1, self.embed_dim)
         h_jobs = h_ops.gather(1, jobs_gather)
 
-        h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, -1, self.num_nodes["machine"], -1)
-        h_machines_padding = h_machines.unsqueeze(-3).expand_as(h_jobs_padding)
+        h_locations_pooled = h_machines.mean(dim=-2)
+        h_ops_pooled = h_ops.mean(dim=-2)
+
+        h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, -1, self.num_locations, -1)
+        h_locations_padding = h_locations.unsqueeze(-3).expand_as(h_jobs_padding)
 
         # h_machines_pooled_padding = h_machines_pooled[:, None, None, :].expand_as(h_machines_padding)
         # h_jobs_pooled_padding = h_jobs_pooled[:, None, None, :].expand_as(h_jobs_padding)
@@ -148,8 +149,8 @@ class FJSPScheduler(nn.Module):
             h_added = self.fc[i](h_added)
             h_added = F.elu(h_added)
 
-        h_actions = torch.cat((h_machines_padding, h_jobs_padding, h_added), dim=-1)
-        h_pooled = torch.cat((h_machines_pooled, h_ops_pooled), dim=-1)
+        h_actions = torch.cat((h_locations_padding, h_jobs_padding, h_added), dim=-1)
+        h_pooled = torch.cat((h_locations_pooled, h_ops_pooled), dim=-1)
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:
