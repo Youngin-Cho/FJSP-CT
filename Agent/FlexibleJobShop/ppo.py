@@ -44,10 +44,10 @@ class RollOutMemory:
     def put(self, state, action, reward, done, log_prob, value):
         # input variables
         self.graph_features.append(state.graph_feature)
-        self.pairwise_features.append(state.pairwise_feature)
-        self.masks.append(state.mask)
-        self.current_operations.append(state.current_operations)
-        self.reorder_idxs.append(state.reorder_idx)
+        self.pairwise_features.append(state.pairwise_feature.unsqueeze(0))
+        self.masks.append(state.mask.unsqueeze(0))
+        self.current_operations.append(state.current_operations.unsqueeze(0))
+        self.reorder_idxs.append(state.reorder_idx.unsqueeze(0))
 
         # other variables
         self.actions.append([action])
@@ -60,10 +60,10 @@ class RollOutMemory:
         self.values.append([last_value])
 
         graph_features = Batch.from_data_list(self.graph_features).to(self.device)
-        pairwise_features = torch.from_numpy(np.array(self.pairwise_features)).type(torch.float32).to(self.device)
-        masks = torch.from_numpy(np.array(self.masks)).type(torch.bool).to(self.device)
-        current_operations = torch.from_numpy(np.array(self.current_operations)).type(torch.long).to(self.device)
-        reorder_idxs = torch.from_numpy(np.array(self.reorder_idxs)).type(torch.long).to(self.device)
+        pairwise_features = torch.concat(self.pairwise_features).to(self.device)
+        masks = torch.concat(self.masks).to(self.device)
+        current_operations = torch.concat(self.current_operations).to(self.device)
+        reorder_idxs = torch.concat(self.reorder_idxs).to(self.device)
 
         actions = torch.from_numpy(np.array(self.actions)).type(torch.long).to(self.device)
         rewards = torch.from_numpy(np.array(self.rewards)).type(torch.float32).to(self.device)
