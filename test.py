@@ -8,6 +8,8 @@ import pandas as pd
 
 from torch.distributions.categorical import Categorical
 from Environment.environment import Factory
+from Agent.FlexibleJobShop.network import FJSPScheduler
+from Agent.CraneTransportation.network import CTScheduler
 from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
 from Agent.CraneTransportation.heuristic import CTHeuristic
 
@@ -35,6 +37,11 @@ if __name__ == "__main__":
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_recording = False if config.no_record else True
 
+    if use_cuda:
+        device = torch.device("cuda:0")
+    else:
+        device = torch.device("cpu")
+
     random_seed = config.random_seed
 
     model_path = config.model_path
@@ -47,7 +54,7 @@ if __name__ == "__main__":
         if not os.path.exists(res_dir_temp):
             os.makedirs(res_dir_temp)
 
-    fjsp_algorithms = ["SPT", "MOR", "MWKR", "RAND"]
+    fjsp_algorithms = ["RL", "SPT", "MOR", "MWKR", "RAND"]
     ct_algorithms = ["SETT", "LOR", "LWKR", "RAND"]
     algorithms = [fjsp_algo + "+" + ct_algo for fjsp_algo in fjsp_algorithms for ct_algo in ct_algorithms]
 
@@ -73,53 +80,75 @@ if __name__ == "__main__":
                 data_src = data_dir_temp + path
                 env = Factory(data_src, algorithm=name.split("+"), use_recording=use_recording)
 
-                if name == "RL":
+                fjsp_name = name.split("+")[0]
+                ct_name = name.split("+")[1]
+
+                if fjsp_name == "RL":
                     with open(param_path, 'r') as f:
                         parameters = json.load(f)
 
-                    config.embed_dim = parameters['embed_dim']
-                    config.n_heads = parameters['n_heads']
-                    config.n_layers_hgt = parameters['n_layers_hgt']
-                    config.n_layers_ff = parameters['n_layers_ff']
+                    fjsp_agent = FJSPScheduler(meta_data=env.fjsp_meta_data,
+                                               state_size=env.fjsp_state_size,
+                                               num_nodes=env.fjsp_num_nodes,
+                                               embed_dim=parameters["embed_dim"],
+                                               num_heads=parameters["num_heads"],
+                                               num_HGT_layers=parameters["num_HGT_layers"],
+                                               num_actor_layers=parameters["num_actor_layers"],
+                                               num_critic_layers=parameters["num_critic_layers"]).to(device)
 
-                    config.n_layers_actor = parameters['n_layers_actor']
-                    config.hidden_dim_actor = parameters['hidden_dim_actor']
-                    config.n_layers_critic = parameters['n_layers_critic']
-                    config.hidden_dim_critic = parameters['hidden_dim_critic']
-
-                    # agent = SchedulingNetwork(meta_data=env.meta_data,
-                    #                           num_nodes=env.num_nodes,
-                    #                           input_dim_g=env.input_dim_g,
-                    #                           input_dim_pair=env.input_dim_pair,
-                    #                           config=config).to(device)
-                    # checkpoint = torch.load(model_path, map_location=torch.device(device))
-                    # agent.load_state_dict(checkpoint['model_state_dict'])
+                    checkpoint = torch.load(model_path, map_location=torch.device(device))
+                    fjsp_agent.load_state_dict(checkpoint['model_state_dict'])
                 else:
                     fjsp_agent = FJSPHeuristic(name.split("+")[0])
+
+                if ct_name == "RL":
+                    with open(param_path, 'r') as f:
+                        parameters = json.load(f)
+
+                    ct_agent = CTScheduler(meta_data=env.ct_meta_data,
+                                           state_size=env.ct_state_size,
+                                           num_nodes=env.ct_num_nodes,
+                                           embed_dim=parameters["embed_dim"],
+                                           num_heads=parameters["num_heads"],
+                                           num_HGT_layers=parameters["num_HGT_layers"],
+                                           num_actor_layers=parameters["num_actor_layers"],
+                                           num_critic_layers=parameters["num_critic_layers"]).to(device)
+
+                    checkpoint = torch.load(model_path, map_location=torch.device(device))
+                    ct_agent.load_state_dict(checkpoint['model_state_dict'])
+                else:
                     ct_agent = CTHeuristic(name.split("+")[1])
 
                 start = time.time()
-                state = env.reset()
+                fjsp_state = env.reset()
                 done = False
 
                 while not done:
-                    if name == "RL":
-                        pass
-                        # with torch.no_grad():
-                        #     fea_g, fea_pair, mask_pair = convert_state(state, device)
-                        #     probs, value = agent(fea_g, fea_pair, mask_pair)
-                        #
-                        # dist = Categorical(probs)
-                        # action = dist.sample().item()
-                    else:
-                        if env.scheduling_mode == "machine":
-                            action = fjsp_agent.act(state)
+                    mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
+
+                    if mode == "fjsp":
+                        if fjsp_name == "RL":
+                            fjsp_action, _, _ = fjsp_agent.act(graph_feature=fjsp_state.graph_feature,
+                                                               pairwise_feature=fjsp_state.pairwise_feature,
+                                                               mask=fjsp_state.mask,
+                                                               current_operations=fjsp_state.current_operations,
+                                                               reorder_idx=fjsp_state.reorder_idx)
                         else:
-                            action = ct_agent.act(state)
+                            fjsp_action = fjsp_agent.act(fjsp_state)
 
-                    next_state, reward, done = env.step(action)
+                        next_ct_state, reward, done = env.step(fjsp_action)
+                    else:
+                        if ct_name == "RL":
+                            ct_action, _, _ = ct_agent.act(ct_state)
+                        else:
+                            ct_action = ct_agent.act(ct_state)
 
-                    state = next_state
+                        next_fjsp_state, reward, done = env.step(ct_action)
+
+                    if mode == "fjsp":
+                        ct_state = next_ct_state
+                    else:
+                        fjsp_state = next_fjsp_state
 
                     if done:
                         finish = time.time()
