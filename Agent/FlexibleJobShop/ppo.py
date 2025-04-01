@@ -68,7 +68,7 @@ class RollOutMemory:
         actions = torch.from_numpy(np.array(self.actions)).type(torch.long).to(self.device)
         rewards = torch.from_numpy(np.array(self.rewards)).type(torch.float32).to(self.device)
         dones = torch.from_numpy(np.array(self.dones)).type(torch.float32).to(self.device)
-        values = torch.from_numpy(np.array(self.values[1:])).type(torch.float32).to(self.device)
+        values = torch.from_numpy(np.array(self.values)).type(torch.float32).to(self.device)
         log_probs = torch.from_numpy(np.array(self.log_probs)).type(torch.float32).to(self.device)
 
         return (graph_features, pairwise_features, masks, current_operations, reorder_idxs,
@@ -136,8 +136,8 @@ class FJSPAgent:
         avg_loss = 0.0
 
         for i in range(self.K_epoch):
-            td_target = rewards + self.gamma * values * dones
-            delta = td_target - values
+            td_target = rewards + self.gamma * values[1:] * dones
+            delta = td_target - values[:-1]
 
             advantage_lst = []
             advantage = 0.0
@@ -146,6 +146,9 @@ class FJSPAgent:
                 advantage_lst.append(advantage)
             advantage_lst.reverse()
             advantage = torch.concat(advantage_lst).unsqueeze(-1).to(self.device)
+
+            # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
+            #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
 
             new_log_probs, new_values, dist_entropy \
                 = self.network.evaluate(batch_graph_feature=graph_features,
