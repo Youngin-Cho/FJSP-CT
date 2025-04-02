@@ -49,18 +49,21 @@ class Crane:
 
         self.queue.append(working_order)
 
-        reorder_flag = True
-        mapping_idx_to_cnt = {}
-        to_location_cnt = {}
-        for index, temp in enumerate(self.queue):
-            cnt = to_location_cnt.get(temp[2])
-            if cnt is not None:
-                mapping_idx_to_cnt[index] = cnt + 1
-                to_location_cnt[temp[2]] += 1
-            else:
-                mapping_idx_to_cnt[index] = 1
-                to_location_cnt[temp[2]] = 1
+        def get_mapping(x):
+            mapping_idx_to_cnt = {}
+            to_location_cnt = {}
+            for index, temp in enumerate(x):
+                cnt = to_location_cnt.get(temp[2])
+                if cnt is not None:
+                    mapping_idx_to_cnt[index] = cnt + 1
+                    to_location_cnt[temp[2]] += 1
+                else:
+                    mapping_idx_to_cnt[index] = 1
+                    to_location_cnt[temp[2]] = 1
+            return mapping_idx_to_cnt
 
+        reorder_flag = True
+        mapping_idx_to_cnt = get_mapping(self.queue)
         basis = working_order[1]
         new_basis = working_order[1]
         while reorder_flag:
@@ -71,6 +74,7 @@ class Crane:
                         del self.queue[index]
                         self.queue.append(temp)
                         new_basis = temp[1]
+                        mapping_idx_to_cnt = get_mapping(self.queue)
                         break
 
             if new_basis == basis:
@@ -241,7 +245,14 @@ class Crane:
     def _moving(self):
         added_travel_time = 0.0
 
+        cnt = 0
         while True:
+            cnt += 1
+            if cnt > 100:
+                self.monitor.get_logs("./temp.xlsx")
+                print("Error!")
+                assert cnt < 100
+
             avoidance, safety_xcoord = self._check_interference()
 
             if self.monitor.use_recording:
