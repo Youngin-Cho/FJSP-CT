@@ -135,7 +135,7 @@ class FJSPScheduler(nn.Module):
         jobs_gather = batch_current_operations.unsqueeze(-1).expand(-1, -1, self.embed_dim)
         h_jobs = h_ops.gather(1, jobs_gather)
 
-        h_locations_pooled = h_machines.mean(dim=-2)
+        h_locations_pooled = h_locations.mean(dim=-2)
         h_ops_pooled = h_ops.mean(dim=-2)
 
         h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, -1, self.num_locations, -1)
