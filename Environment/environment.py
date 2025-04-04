@@ -163,7 +163,8 @@ class Factory:
 
             self.scheduling_mode = "crane"
         else:
-            crane_id = action
+            crane_id = action % self.num_cranes
+            location_id = action // self.num_cranes
 
             job = self.monitor.remove_from_queue(scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
@@ -309,10 +310,13 @@ class Factory:
 
 
     def _get_cs_mask(self, job, next_location):
-        mask = np.zeros(self.num_cranes + 1, dtype=bool)
+        num_rows = self.num_cranes + 1
+        num_columns = self.num_inputpoints + self.num_machines + self.num_buffers
+        mask = np.zeros((num_rows, num_columns), dtype=bool)
 
+        location_id = self.locations[job.current_location].global_id
         if job.current_location == next_location:
-            mask[self.num_cranes] = 1
+            mask[self.num_cranes, location_id] = 1
         else:
             current_location_coord = self.locations[job.current_location].coord
             next_location_coord = self.locations[next_location].coord
@@ -396,7 +400,8 @@ class Factory:
                         flag_not_blocked = False
                         break
 
-                mask[crane.id] = flag_accessibility & flag_not_reversed & flag_not_cycled & flag_not_blocked
+                mask[crane.id, location_id] \
+                    = flag_accessibility & flag_not_reversed & flag_not_cycled & flag_not_blocked
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
 
@@ -938,11 +943,16 @@ class Factory:
                 pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
 
             else:
-                priority_idx = np.zeros(self.num_cranes + 1)
-                priority_idx[self.num_cranes] = 1
+                num_rows = self.num_inputpoints + self.num_machines + self.num_buffers
+                num_columns = self.num_cranes + 1
+
+                priority_idx = np.zeros((num_rows, num_columns))
 
                 job = self.monitor.queue_for_crane_scheduling
+                location_id = self.locations[job.current_location].global_id
                 location_coord = self.locations[job.current_location].coord
+
+                priority_idx[location_id, self.num_cranes] = 1.0
 
                 if crane_scheduling_algorithm == "SETT":
                     for crane in self.resources.values():
@@ -958,7 +968,7 @@ class Factory:
                         y_travel_time = abs(location_coord[1] - crane_coord[1]) / crane.y_velocity
                         empty_travel_time = max(x_travel_time, y_travel_time)
 
-                        priority_idx[crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1
+                        priority_idx[location_id, crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1.0
 
                 elif crane_scheduling_algorithm == "NCR":
                     pass
@@ -970,7 +980,7 @@ class Factory:
                             remaining_jobs += 1
                         remaining_jobs += len(crane.queue)
 
-                        priority_idx[crane.id] = 1 / remaining_jobs if remaining_jobs > 0 else 1
+                        priority_idx[location_id, crane.id] = 1 / remaining_jobs if remaining_jobs > 0 else 1.0
 
                 elif crane_scheduling_algorithm == "LWKR":
                     for crane in self.resources.values():
@@ -997,10 +1007,10 @@ class Factory:
 
                             current_coord = location_coord
 
-                        priority_idx[crane.id] = 1 / remaining_work if remaining_work > 0 else 1
+                        priority_idx[location_id, crane.id] = 1 / remaining_work if remaining_work > 0 else 1.0
 
                 elif crane_scheduling_algorithm == "RAND":
-                    priority_idx[:] = 1.0
+                    priority_idx[location_id, :] = 1.0
 
         if self.scheduling_mode == "machine":
             state = State(self.algorithm[0])
