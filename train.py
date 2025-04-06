@@ -147,6 +147,7 @@ if __name__ == "__main__":
                              division=setting["division"])
 
     env = Factory(data_src,
+                  device=device,
                   algorithm=(fjsp_algorithm, ct_algorithm),
                   use_recording=use_recording)
 
@@ -338,6 +339,7 @@ if __name__ == "__main__":
 
         if e % reset_every == 0:
             env = Factory(data_src,
+                          device=device,
                           algorithm=(fjsp_algorithm, ct_algorithm),
                           use_recording=use_recording)
 

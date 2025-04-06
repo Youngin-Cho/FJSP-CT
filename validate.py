@@ -7,8 +7,10 @@ from Environment.environment import Factory
 def evaluate(fjsp_agent, ct_agent, val_dir):
     if fjsp_agent.name == "RL":
         fjsp_agent.network.eval()
+        device = fjsp_agent.device
     if ct_agent.name == "RL":
         ct_agent.network.eval()
+        device = ct_agent.device
 
     val_paths = os.listdir(val_dir)
     makespan_lst = []
@@ -19,6 +21,7 @@ def evaluate(fjsp_agent, ct_agent, val_dir):
                 continue
 
             env = Factory(val_dir + path,
+                          device=device,
                           algorithm=(fjsp_agent.name, ct_agent.name),
                           use_recording=False)
 
