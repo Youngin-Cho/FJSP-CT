@@ -426,24 +426,55 @@ class Crane:
         min_xcoord = float('inf')
         max_xcoord = float('-inf')
 
+        travel_time_opposite = 0.0
+
         if self.opposite.current_working_order is not None:
             working_order_list = [self.opposite.current_working_order] + self.opposite.queue
         else:
             working_order_list = self.opposite.queue
 
+        current_coord = self.opposite.current_coord
         for i, working_order in enumerate(working_order_list):
             job_id, current_location, next_location = working_order
             if i == 0 and self.opposite.status == "unloading":
+                dx_opposite = self.locations[next_location].coord[0] - current_coord[0]
+                dy_opposite = self.locations[next_location].coord[1] - current_coord[1]
+                travel_time_temp = max(abs(dx_opposite) / self.opposite.x_velocity,
+                                       abs(dy_opposite) / self.opposite.y_velocity)
+
+                travel_time_opposite += travel_time_temp
+
+                current_coord = self.locations[next_location].coord
+
                 if self.locations[next_location].coord[0] < min_xcoord:
                     min_xcoord = self.locations[next_location].coord[0]
                 if self.locations[next_location].coord[0] > max_xcoord:
                     max_xcoord = self.locations[next_location].coord[0]
             else:
                 location = self.locations[current_location]
+
+                dx_opposite = self.locations[current_location].coord[0] - current_coord[0]
+                dy_opposite = self.locations[current_location].coord[1] - current_coord[1]
+                travel_time_temp = max(abs(dx_opposite) / self.opposite.x_velocity,
+                                       abs(dy_opposite) / self.opposite.y_velocity)
+
+                travel_time_opposite += travel_time_temp
+
+                current_coord = self.locations[current_location].coord
+
                 if (location.category == 1 or location.category == 2) and location.fully_occupied:
                     if self.to_location == current_location:
                         blocking_flag = True
                         break
+
+                dx_opposite = self.locations[next_location].coord[0] - current_coord[0]
+                dy_opposite = self.locations[next_location].coord[1] - current_coord[1]
+                travel_time_temp = max(abs(dx_opposite) / self.opposite.x_velocity,
+                                       abs(dy_opposite) / self.opposite.y_velocity)
+
+                travel_time_opposite += travel_time_temp
+
+                current_coord = self.locations[next_location].coord
 
                 if self.locations[current_location].coord[0] < min_xcoord:
                     min_xcoord = self.locations[next_location].coord[0]
@@ -454,6 +485,23 @@ class Crane:
                     min_xcoord = self.locations[next_location].coord[0]
                 if self.locations[next_location].coord[0] > max_xcoord:
                     max_xcoord = self.locations[next_location].coord[0]
+
+        if self.to_location is not None:
+            dx = self.locations[self.to_location].coord[0] - self.current_coord[0]
+            dy = self.locations[self.to_location].coord[1] - self.current_coord[1]
+            direction = np.sign(dx)
+            travel_time = max(abs(dx) / self.x_velocity,
+                              abs(dy) / self.y_velocity)
+
+            min_travel_time = min(travel_time, travel_time_opposite)
+            xcoord = self.current_coord[0] + min_travel_time * self.x_velocity * direction
+            xcoord_target = self.locations[self.to_location].coord[0]
+
+            if (self.id == 0 and xcoord <= xcoord_target - self.safety_margin) \
+                    or (self.id == 1 and xcoord >= xcoord_target + self.safety_margin):
+                blocking_flag = False
+                min_xcoord = float('inf')
+                max_xcoord = float('-inf')
 
         self.blocked = blocking_flag
 
