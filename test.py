@@ -54,8 +54,8 @@ if __name__ == "__main__":
         if not os.path.exists(res_dir_temp):
             os.makedirs(res_dir_temp)
 
-    fjsp_algorithms = ["RL", "SPT", "MOR", "MWKR", "RAND"]
-    ct_algorithms = ["SETT", "LOR", "LWKR", "RAND"]
+    fjsp_algorithms = ["SPT", "MOR", "MWKR", "RAND"]
+    ct_algorithms = ["RL", "SETT", "LOR", "LWKR", "RAND"]
     algorithms = [fjsp_algo + "+" + ct_algo for fjsp_algo in fjsp_algorithms for ct_algo in ct_algorithms]
 
     for data_dir_temp, res_dir_temp in zip(data_dir, res_dir):
@@ -139,7 +139,9 @@ if __name__ == "__main__":
                         next_ct_state, reward, done = env.step(fjsp_action)
                     else:
                         if ct_name == "RL":
-                            ct_action, _, _ = ct_agent.act(ct_state)
+                            ct_action, _, _ = ct_agent.act(graph_feature=ct_state.graph_feature,
+                                                           pairwise_feature=ct_state.pairwise_feature,
+                                                           mask=ct_state.mask)
                         else:
                             ct_action = ct_agent.act(ct_state)
 

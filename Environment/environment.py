@@ -132,8 +132,8 @@ class Factory:
         }
 
         self.ct_num_nodes = {
-            "crane": self.num_cranes,
-            "location": self.num_locations - self.num_outputpoints
+            "crane": self.num_cranes + 1,
+            "location": self.num_locations
         }
 
         self.state = None
@@ -163,8 +163,8 @@ class Factory:
 
             self.scheduling_mode = "crane"
         else:
-            crane_id = action % self.num_cranes
-            location_id = action // self.num_cranes
+            crane_id = action % (self.num_cranes + 1)
+            location_id = action // (self.num_cranes + 1)
 
             job = self.monitor.remove_from_queue(scheduling_mode=self.scheduling_mode)
             current_location = job.current_location
@@ -308,10 +308,9 @@ class Factory:
 
         return mask
 
-
     def _get_cs_mask(self, job, next_location):
         num_rows = self.num_cranes + 1
-        num_columns = self.num_inputpoints + self.num_machines + self.num_buffers
+        num_columns = self.num_locations
         mask = np.zeros((num_rows, num_columns), dtype=bool)
 
         location_id = self.locations[job.current_location].global_id
@@ -763,8 +762,10 @@ class Factory:
 
             if crane_scheduling_algorithm == "RL":
                 crane_feature = np.zeros((self.num_cranes + 1, self.ct_crane_feature_dim))
-                location_feature = np.zeros((self.num_locations - self.num_outputpoints, self.ct_location_feature_dim))
-                pairwise_feature = np.zeros((1, self.num_cranes, self.ct_pairwise_feature_dim))
+                location_feature = np.zeros((self.num_locations, self.ct_location_feature_dim))
+                pairwise_feature = np.zeros((self.num_locations,
+                                             self.num_cranes + 1,
+                                             self.ct_pairwise_feature_dim))
 
                 edge_crane_to_crane = [[], []]
                 edge_location_to_location = [[], []]
@@ -841,25 +842,23 @@ class Factory:
                 current_location = self.monitor.queue_for_crane_scheduling.current_location
                 target_location = self.monitor.queue_for_crane_scheduling.next_location
                 for location in self.locations.values():
-                    if location.category == 3:
-                        continue
+                    xcoord, ycoord = location.coord
+                    f1 = xcoord / self.x_max if self.x_max != 0 else 0
+                    f2 = ycoord / self.y_max if self.y_max != 0 else 0
+
+                    if location.name == current_location:
+                        target_coord = self.locations[target_location].coord
+                        f3 = target_coord[0] / self.x_max if self.x_max != 0 else 0
+                        f4 = target_coord[1] / self.y_max if self.y_max != 0 else 0
                     else:
-                        xcoord, ycoord = location.coord
-                        f1 = xcoord / self.x_max if self.x_max != 0 else 0
-                        f2 = ycoord / self.y_max if self.y_max != 0 else 0
+                        f3 = -1
+                        f4 = -1
 
-                        if location.name == current_location:
-                            target_coord = self.locations[target_location].coord
-                            f3 = target_coord[0] / self.x_max if self.x_max != 0 else 0
-                            f4 = target_coord[1] / self.y_max if self.y_max != 0 else 0
-                        else:
-                            f3 = -1
-                            f4 = -1
-
-                        location_feature[location.global_id, :] = [f1, f2, f3, f4]
+                    location_feature[location.global_id, :] = [f1, f2, f3, f4]
 
                 # Pairwise Feature
                 current_location = self.monitor.queue_for_crane_scheduling.current_location
+                current_location_id = self.locations[current_location].global_id
                 current_coord = self.locations[current_location].coord
                 for crane in self.resources.values():
                     if len(crane.queue) > 0:
@@ -878,7 +877,7 @@ class Factory:
                     f1 = (crane_coord[0] - current_coord[0]) / self.x_max if self.x_max != 0 else 0
                     f2 = (crane_coord[1] - current_coord[1]) / self.y_max if self.y_max != 0 else 0
 
-                    pairwise_feature[0, crane.id, :] = [f1, f2]
+                    pairwise_feature[current_location_id, crane.id, :] = [f1, f2]
 
                 # Edge Construction
                 for crane_1 in self.resources.values():
@@ -943,7 +942,7 @@ class Factory:
                 pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
 
             else:
-                num_rows = self.num_inputpoints + self.num_machines + self.num_buffers
+                num_rows = self.num_locations
                 num_columns = self.num_cranes + 1
 
                 priority_idx = np.zeros((num_rows, num_columns))
@@ -969,9 +968,6 @@ class Factory:
                         empty_travel_time = max(x_travel_time, y_travel_time)
 
                         priority_idx[location_id, crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1.0
-
-                elif crane_scheduling_algorithm == "NCR":
-                    pass
 
                 elif crane_scheduling_algorithm == "LOR":
                     for crane in self.resources.values():
@@ -1198,7 +1194,7 @@ if __name__ == "__main__":
     from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
     from Agent.CraneTransportation.heuristic import CTHeuristic
 
-    algorithm = ("RAND", "RL")
+    algorithm = ("RL", "SETT")
 
     fjsp_agent = FJSPHeuristic(algorithm[0])
     ct_agent = CTHeuristic(algorithm[1])
@@ -1213,15 +1209,15 @@ if __name__ == "__main__":
 
     while True:
         if env.scheduling_mode == "machine":
-            action = fjsp_agent.act(state)
-            # mask = state.mask.transpose(0, 1).flatten()
-            # candidates = np.where(mask == True)[0]
-            # action = np.random.choice(candidates)
-        else:
-            # action = ct_agent.act(state)
-            mask = state.mask
+            # action = fjsp_agent.act(state)
+            mask = state.mask.transpose(0, 1).flatten()
             candidates = np.where(mask == True)[0]
             action = np.random.choice(candidates)
+        else:
+            action = ct_agent.act(state)
+            # mask = state.mask
+            # candidates = np.where(mask == True)[0]
+            # action = np.random.choice(candidates)
 
         next_state, reward, done = env.step(action)
 

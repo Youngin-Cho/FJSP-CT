@@ -11,7 +11,7 @@ from Environment.data import DataGenerator
 from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
 from Agent.CraneTransportation.heuristic import CTHeuristic
 from Agent.FlexibleJobShop.ppo import FJSPAgent
-# from Agent.CraneTransportation.ppo import CTAgent
+from Agent.CraneTransportation.ppo import CTAgent
 from validate import evaluate
 
 
@@ -175,26 +175,25 @@ if __name__ == "__main__":
         fjsp_agent = FJSPHeuristic(fjsp_algorithm)
 
     if ct_algorithm == "RL":
-        pass
-        # ct_agent = CTAgent(meta_data=env.ct_meta_data,
-        #                    state_size=env.ct_state_size,
-        #                    num_nodes=env.ct_num_nodes,
-        #                    embed_dim=embed_dim,
-        #                    num_heads=num_heads,
-        #                    num_HGT_layers=num_HGT_layers,
-        #                    num_actor_layers=num_actor_layers,
-        #                    num_critic_layers=num_critic_layers,
-        #                    lr=lr,
-        #                    lr_decay=lr_decay,
-        #                    lr_step=lr_step,
-        #                    gamma=gamma,
-        #                    lmbda=lmbda,
-        #                    eps_clip=eps_clip,
-        #                    K_epoch=K_epoch,
-        #                    P_coeff=P_coeff,
-        #                    V_coeff=V_coeff,
-        #                    E_coeff=E_coeff,
-        #                    device=device)
+        ct_agent = CTAgent(meta_data=env.ct_meta_data,
+                           state_size=env.ct_state_size,
+                           num_nodes=env.ct_num_nodes,
+                           embed_dim=embed_dim,
+                           num_heads=num_heads,
+                           num_HGT_layers=num_HGT_layers,
+                           num_actor_layers=num_actor_layers,
+                           num_critic_layers=num_critic_layers,
+                           lr=lr,
+                           lr_decay=lr_decay,
+                           lr_step=lr_step,
+                           gamma=gamma,
+                           lmbda=lmbda,
+                           eps_clip=eps_clip,
+                           K_epoch=K_epoch,
+                           P_coeff=P_coeff,
+                           V_coeff=V_coeff,
+                           E_coeff=E_coeff,
+                           device=device)
     else:
         ct_agent = CTHeuristic(ct_algorithm)
 
@@ -232,64 +231,66 @@ if __name__ == "__main__":
                 writer.add_scalar("Training/LearningRate", ct_agent.scheduler.get_last_lr()[0], e)
 
         step = 0
+        fjsp_step = 0
+        ct_step = 0
+
         episode_reward = 0.0
         episode_average_loss = 0.0
 
         fjsp_state = env.reset()
 
         while True:
-            for t in range(T_horizon * 2):
-                mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
+            mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
 
-                if mode == "fjsp":
-                    if fjsp_algorithm == "RL":
-                        fjsp_action, fjsp_log_prob, fjsp_value = fjsp_agent.get_action(fjsp_state)
-                    else:
-                        fjsp_action = fjsp_agent.act(fjsp_state)
+            if mode == "fjsp":
+                fjsp_step += 1
 
-                    next_ct_state, reward, done = env.step(fjsp_action)
+                if fjsp_algorithm == "RL":
+                    fjsp_action, fjsp_log_prob, fjsp_value = fjsp_agent.get_action(fjsp_state)
                 else:
-                    if ct_algorithm == "RL":
-                        ct_action, ct_log_prob, ct_value = ct_agent.get_action(ct_state)
-                    else:
-                        ct_action = ct_agent.act(ct_state)
+                    fjsp_action = fjsp_agent.act(fjsp_state)
 
-                    next_fjsp_state, reward, done = env.step(ct_action)
+                next_ct_state, fjsp_reward, done = env.step(fjsp_action)
+                episode_reward += fjsp_reward
+            else:
+                ct_step += 1
 
-                if mode == "fjsp":
-                    ct_state = next_ct_state
+                if ct_algorithm == "RL":
+                    ct_action, ct_log_prob, ct_value = ct_agent.get_action(ct_state)
                 else:
-                    if fjsp_algorithm == "RL":
-                        fjsp_agent.put_sample(fjsp_state, fjsp_action, reward, done, fjsp_log_prob, fjsp_value)
-                    if ct_algorithm == "RL":
-                        ct_agent.put_sample(fjsp_state, ct_action, reward, done, ct_log_prob, ct_value)
+                    ct_action = ct_agent.act(ct_state)
 
-                    fjsp_state = next_fjsp_state
+                next_fjsp_state, ct_reward, done = env.step(ct_action)
+                episode_reward += ct_reward
 
-                episode_reward += reward
+            if mode == "fjsp":
+                if ct_algorithm == "RL" and ct_step >= 1:
+                    ct_agent.put_sample(ct_state, ct_action, ct_reward + fjsp_reward, done, ct_log_prob, ct_value)
 
-                if done:
-                    break
+                ct_state = next_ct_state
+            else:
+                if fjsp_algorithm == "RL" and fjsp_step >= 1:
+                    fjsp_agent.put_sample(fjsp_state, fjsp_action, fjsp_reward + ct_reward, done, fjsp_log_prob, fjsp_value)
 
-            if fjsp_algorithm == "RL":
+                fjsp_state = next_fjsp_state
+
+            if fjsp_algorithm == "RL" and (done or len(fjsp_agent.memory.actions) == T_horizon):
                 if done:
                     last_value = 0.0
                 else:
                     _, _, last_value = fjsp_agent.get_action(fjsp_state)
 
-                episode_average_loss += fjsp_agent.train(last_value)
+                if len(fjsp_agent.memory.actions) > 0:
+                    episode_average_loss += fjsp_agent.train(last_value)
 
-            if ct_algorithm == "RL":
+            if ct_algorithm == "RL" and (done or len(ct_agent.memory.actions) == T_horizon):
                 if done:
                     last_value = 0.0
                 else:
-                    fjsp_action = fjsp_agent.act(fjsp_state)
-                    next_ct_state, reward, done = env.step(fjsp_action)
-                    ct_state = next_ct_state
-
                     _, _, last_value = ct_agent.get_action(ct_state)
 
-                episode_average_loss += ct_agent.train(last_value)
+                if len(ct_agent.memory.actions) > 0:
+                    episode_average_loss += ct_agent.train(last_value)
 
             step += 1
 

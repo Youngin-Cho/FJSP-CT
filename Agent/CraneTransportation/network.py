@@ -20,7 +20,7 @@ class CTScheduler(nn.Module):
         self.num_actor_layers = num_actor_layers
         self.num_critic_layers = num_critic_layers
 
-        self.num_locations = self.num_nodes["location"]
+        self.num_cranes = self.num_nodes["crane"]
 
         self.conv = nn.ModuleList()
         for i in range(self.num_HGT_layers):
@@ -64,7 +64,7 @@ class CTScheduler(nn.Module):
         h_cranes_pooled = h_cranes.mean(dim=-2)
         h_locations_pooled = h_locations.mean(dim=-2)
 
-        h_locations_padding = h_locations.unsqueeze(-2).expand(-1, self.num_locations, -1)
+        h_locations_padding = h_locations.unsqueeze(-2).expand(-1, self.num_cranes, -1)
         h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_locations_padding)
 
         # h_machines_pooled_padding = h_machines_pooled[None, None, :].expand_as(h_machines_padding)
@@ -124,7 +124,7 @@ class CTScheduler(nn.Module):
         h_cranes_pooled = h_cranes.mean(dim=-2)
         h_locations_pooled = h_locations.mean(dim=-2)
 
-        h_locations_padding = h_locations.unsqueeze(-2).expand(-1, -1, self.num_locations, -1)
+        h_locations_padding = h_locations.unsqueeze(-2).expand(-1, -1, self.num_cranes, -1)
         h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_locations_padding)
 
         # h_machines_pooled_padding = h_machines_pooled[:, None, None, :].expand_as(h_machines_padding)
