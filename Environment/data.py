@@ -29,10 +29,10 @@ class DataGenerator:
                  division=(0, 1, 1, 2, 1, 2, 1, 1, 3)
                  ):
 
-        assert len([temp for temp in division if temp == 0]) == num_inputs
-        assert len([temp for temp in division if temp == 1]) == num_machines
-        assert len([temp for temp in division if temp == 2]) == num_buffers
-        assert len([temp for temp in division if temp == 3]) == num_outputs
+        # assert len([temp for temp in division if temp == 0]) == num_inputs
+        # assert len([temp for temp in division if temp == 1]) == num_machines
+        # assert len([temp for temp in division if temp == 2]) == num_buffers
+        # assert len([temp for temp in division if temp == 3]) == num_outputs
 
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs

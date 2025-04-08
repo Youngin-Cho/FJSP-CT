@@ -1,0 +1,32 @@
+{
+    "num_inputs": 2,
+    "num_outputs": 2,
+    "num_machines": 10,
+    "num_buffers": 4,
+    "num_jobs": 15,
+    "num_options_min": 1,
+    "num_options_max": 5,
+    "num_operations_min": 4,
+    "num_operations_max": 6,
+    "proctime_min": 1,
+    "proctime_max": 20,
+    "inter_arrival_time": 2,
+    "num_cranes": 2,
+    "safety_margin": 2,
+    "x_velocity": 0.5,
+    "y_velocity": 1.0,
+    "num_rows": 2,
+    "x_spacing": 1,
+    "y_spacing": 1,
+    "division": [
+        0,
+        1,
+        1,
+        2,
+        1,
+        2,
+        1,
+        1,
+        3
+    ]
+}
