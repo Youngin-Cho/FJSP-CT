@@ -1,3 +1,4 @@
+import simpy
 import numpy as np
 import pandas as pd
 
@@ -39,6 +40,7 @@ class Crane:
         self.avoiding_time = 0.0
 
         self.waiting_event = None
+        self.moving_process = None
         self.process = env.process(self._run())
 
     def add_to_queue(self, working_order):
@@ -90,6 +92,9 @@ class Crane:
         queue_to = set([temp[2] for temp in self.queue if self.locations[temp[2]].category == 1])
         queue_from_opposite = set([temp[1] for temp in self.opposite.queue if self.locations[temp[1]].category == 1])
         self.blocked_expected = len(set.intersection(queue_to, queue_from_opposite)) > 0
+
+        if self.opposite.to_location in [temp[1] for temp in self.queue]:
+            self.opposite.moving_process.interrupt()
 
     def set_opposite_crane(self, crane):
         self.opposite = crane
@@ -167,16 +172,20 @@ class Crane:
                 if len(self.queue) == 0:
                     waiting_start = self.env.now
                     if self.monitor.use_recording:
-                        self.monitor.record(self.env.now, event="Waiting_Started",
-                                            location=self.location_mapping[self.current_coord].name, resource=self.name)
+                        self.monitor.record(self.env.now,
+                                            event="Waiting_Started",
+                                            resource=self.name,
+                                            coord=self.current_coord)
 
                     self.waiting_event = self.env.event()
                     target_coord = yield self.waiting_event
 
                     waiting_finish = self.env.now
                     if self.monitor.use_recording:
-                        self.monitor.record(self.env.now, event="Waiting_Finished",
-                                            location=self.location_mapping[self.current_coord].name, resource=self.name)
+                        self.monitor.record(self.env.now,
+                                            event="Waiting_Finished",
+                                            resource=self.name,
+                                            coord=self.current_coord)
 
                     self.idle_time += waiting_finish - waiting_start
 
@@ -199,8 +208,12 @@ class Crane:
                 job_id, current_location, next_location = self.current_working_order
 
                 if self.monitor.use_recording:
-                    self.monitor.record(self.env.now, event="Order_Assigned",
-                                        resource=self.name, destination=current_location, queue=self.queue[:])
+                    self.monitor.record(self.env.now,
+                                        event="Order_Assigned",
+                                        resource=self.name,
+                                        coord=self.current_coord,
+                                        destination=current_location,
+                                        queue=self.queue[:])
 
                 location = self.locations[current_location]
                 location.reserve_job(job_id)
@@ -213,13 +226,17 @@ class Crane:
                 self.priority_queue.append(self.name)
                 self.opposite.priority_queue.append(self.name)
 
-                yield self.env.process(self._moving())
+                self.moving_process = self.env.process(self._moving())
+                yield self.moving_process
                 self.job = self.locations[self.to_location].get(job_id)
 
                 if self.monitor.use_recording:
-                    self.monitor.record(self.env.now, event="Get",
+                    self.monitor.record(self.env.now,
+                                        event="Get",
                                         location=self.locations[self.to_location].name,
-                                        resource=self.name, item=self.job.name)
+                                        resource=self.name,
+                                        coord=self.current_coord,
+                                        item=self.job.name)
 
                 self.priority_queue.append(self.name)
                 self.opposite.priority_queue.append(self.name)
@@ -230,13 +247,17 @@ class Crane:
                 self.target_coord = location.coord
                 self.to_location = location.name
 
-                yield self.env.process(self._moving())
+                self.moving_process = self.env.process(self._moving())
+                yield self.moving_process
                 self.locations[self.to_location].put(self.job)
 
                 if self.monitor.use_recording:
-                    self.monitor.record(self.env.now, event="Put",
+                    self.monitor.record(self.env.now,
+                                        event="Put",
                                         location=self.locations[self.to_location].name,
-                                        resource=self.name, item=self.job.name)
+                                        resource=self.name,
+                                        coord=self.current_coord,
+                                        item=self.job.name)
 
                 self.target_coord = (-1.0, -1.0)
                 self.to_location = None
@@ -256,119 +277,163 @@ class Crane:
             avoidance, safety_xcoord = self._check_interference()
 
             if self.monitor.use_recording:
-                self.monitor.record(self.env.now, event="Check_Priority",
-                                    location=self.location_mapping[self.current_coord].name, resource=self.name,
-                                    item=self.job.name if self.job is not None else None, blocked=self.blocked,
-                                    avoidance=avoidance, destination = self.to_location)
+                self.monitor.record(self.env.now,
+                                    event="Check_Priority",
+                                    resource=self.name,
+                                    coord=self.current_coord,
+                                    item=self.job.name if self.job is not None else None,
+                                    blocked=self.blocked,
+                                    avoidance=avoidance,
+                                    destination=self.to_location)
 
-            if avoidance:
-                self.safety_coord = (safety_xcoord, self.target_coord[1])
-                opposite_direction = True if np.sign(safety_xcoord - self.current_coord[0]) \
-                                             != np.sign(self.target_coord[0] - self.current_coord[0]) else False
-                travel_time = self.get_travel_time(self.safety_coord)
-                travel_time_opposite = self.opposite.get_travel_time(self.opposite.target_coord)
+            try:
+                if avoidance:
+                    self.safety_coord = (safety_xcoord, self.target_coord[1])
+                    opposite_direction = True if np.sign(safety_xcoord - self.current_coord[0]) \
+                                                 != np.sign(self.target_coord[0] - self.current_coord[0]) else False
+                    travel_time = self.get_travel_time(self.safety_coord)
+                    travel_time_opposite = self.opposite.get_travel_time(self.opposite.target_coord)
 
-                if self.monitor.use_recording:
-                    self.monitor.record(self.env.now, event="Move_from",
-                                        location=self.location_mapping[self.current_coord].name, resource=self.name,
-                                        item=self.job.name if self.job is not None else None,
-                                        destination=self.to_location)
+                    if self.monitor.use_recording:
+                        self.monitor.record(self.env.now,
+                                            event="Move_from",
+                                            location=self.location_mapping[self.current_coord].name
+                                                if self.location_mapping.get(self.current_coord) is not None else None,
+                                            resource=self.name,
+                                            coord=self.current_coord,
+                                            item=self.job.name if self.job is not None else None,
+                                            destination=self.to_location)
 
-                yield self.env.timeout(travel_time)
+                    yield self.env.timeout(travel_time)
 
+                    self.opposite.update_location(self.env.now)
+                    self.update_location(self.env.now)
+
+                    if self.monitor.use_recording:
+                        self.monitor.record(self.env.now,
+                                            event="Move_to",
+                                            location=self.location_mapping[self.current_coord].name
+                                                if self.location_mapping.get(self.current_coord) is not None else None,
+                                            resource=self.name,
+                                            coord=self.current_coord,
+                                            item=self.job.name if self.job is not None else None,
+                                            destination=self.to_location)
+
+                    self.safety_coord = (-1.0, -1.0)
+
+                    if opposite_direction:
+                        self.avoiding_time += travel_time
+                        added_travel_time += travel_time
+                    else:
+                        if self.status == "loading":
+                            self.empty_travel_time += travel_time
+
+                    if travel_time_opposite > travel_time:
+                        self.waiting = True
+                        avoiding_start = self.env.now
+                        if self.monitor.use_recording:
+                            self.monitor.record(self.env.now,
+                                                event="Avoiding_wait_start",
+                                                location=self.location_mapping[self.current_coord].name
+                                                    if self.location_mapping.get(self.current_coord) is not None else None,
+                                                resource=self.name,
+                                                coord=self.current_coord,
+                                                item=self.job.name if self.job is not None else None,
+                                                destination=self.to_location)
+
+                        yield self.env.timeout(travel_time_opposite - travel_time)
+
+                        self.opposite.update_location(self.env.now, on_location=True)
+                        self.update_location(self.env.now)
+
+                        self.waiting = False
+                        avoiding_finish = self.env.now
+                        if self.monitor.use_recording:
+                            self.monitor.record(self.env.now,
+                                                event="Avoiding_wait_finish",
+                                                location=self.location_mapping[self.current_coord].name
+                                                    if self.location_mapping.get(self.current_coord) is not None else None,
+                                                resource=self.name,
+                                                coord=self.current_coord,
+                                                item=self.job.name if self.job is not None else None,
+                                                destination=self.to_location)
+
+                        self.avoiding_time += avoiding_finish - avoiding_start
+                else:
+                    if self.monitor.use_recording:
+                        self.monitor.record(self.env.now,
+                                            event="Move_from",
+                                            location=self.location_mapping[self.current_coord].name
+                                                if self.location_mapping.get(self.current_coord) is not None else None,
+                                            resource=self.name,
+                                            coord=self.current_coord,
+                                            item=self.job.name if self.job is not None else None,
+                                            destination=self.to_location)
+
+                    travel_time = self.get_travel_time(self.target_coord)
+
+                    if self.opposite.idle:
+                        xcoord = (self.current_coord[0] + travel_time * self.x_velocity
+                                  * np.sign(self.target_coord[0] - self.current_coord[0]))
+                        xcoord_opposite = self.opposite.current_coord[0]
+
+                        if self.id == 0 and xcoord > xcoord_opposite - self.safety_margin:
+                            flag = True
+                            target_coord_opposite = (xcoord + self.safety_margin, self.opposite.current_coord[1])
+                        elif self.id == 1 and xcoord < xcoord_opposite + self.safety_margin:
+                            flag = True
+                            target_coord_opposite = (xcoord - self.safety_margin, self.opposite.current_coord[1])
+                        else:
+                            flag = False
+
+                        if flag:
+                            if not self.opposite.waiting_event.triggered:
+                                self.opposite.waiting_event.succeed(target_coord_opposite)
+
+                    yield self.env.timeout(travel_time)
+
+                    self.opposite.update_location(self.env.now)
+                    self.update_location(self.env.now, on_location=True)
+
+                    if self.monitor.use_recording:
+                        self.monitor.record(self.env.now,
+                                            event="Move_to",
+                                            location=self.location_mapping[self.current_coord].name
+                                                if self.location_mapping.get(self.current_coord) is not None else None,
+                                            resource=self.name,
+                                            coord=self.current_coord,
+                                            item=self.job.name if self.job is not None else None,
+                                            destination=self.to_location)
+
+                    if added_travel_time > 0.0:
+                        self.avoiding_time += added_travel_time
+
+                    self.priority_queue.remove(self.name)
+                    self.opposite.priority_queue.remove(self.name)
+
+                    if self.status == "loading":
+                        self.empty_travel_time += (travel_time - added_travel_time)
+                        self.status = "unloading"
+                    elif self.status == "unloading":
+                        self.current_working_order = None
+                        self.status = "waiting"
+
+                    break
+
+            except simpy.Interrupt as i:
                 self.opposite.update_location(self.env.now)
                 self.update_location(self.env.now)
 
                 if self.monitor.use_recording:
-                    self.monitor.record(self.env.now, event="Move_to",
-                                        location=self.location_mapping[self.current_coord].name, resource=self.name,
+                    self.monitor.record(self.env.now,
+                                        event="Recheck_Required",
+                                        location=self.location_mapping[self.current_coord].name
+                                            if self.location_mapping.get(self.current_coord) is not None else None,
+                                        resource=self.name,
+                                        coord=self.current_coord,
                                         item=self.job.name if self.job is not None else None,
                                         destination=self.to_location)
 
-                self.safety_coord = (-1.0, -1.0)
-
-                if opposite_direction:
-                    self.avoiding_time += travel_time
-                    added_travel_time += travel_time
-                else:
-                    if self.status == "loading":
-                        self.empty_travel_time += travel_time
-
-                if travel_time_opposite > travel_time:
-                    self.waiting = True
-                    avoiding_start = self.env.now
-                    if self.monitor.use_recording:
-                        self.monitor.record(self.env.now, event="Avoiding_wait_start",
-                                            location=self.location_mapping[self.current_coord].name, resource=self.name,
-                                            item=self.job.name if self.job is not None else None,
-                                            destination=self.to_location)
-
-                    yield self.env.timeout(travel_time_opposite - travel_time)
-
-                    self.opposite.update_location(self.env.now, on_location=True)
-                    self.update_location(self.env.now)
-
-                    self.waiting = False
-                    avoiding_finish = self.env.now
-                    if self.monitor.use_recording:
-                        self.monitor.record(self.env.now, event="Avoiding_wait_finish",
-                                            location=self.location_mapping[self.current_coord].name, resource=self.name,
-                                            item=self.job.name if self.job is not None else None,
-                                            destination=self.to_location)
-
-                    self.avoiding_time += avoiding_finish - avoiding_start
-            else:
-                if self.monitor.use_recording:
-                    self.monitor.record(self.env.now, event="Move_from",
-                                        location=self.location_mapping[self.current_coord].name, resource=self.name,
-                                        item=self.job.name if self.job is not None else None,
-                                        destination=self.to_location)
-
-                travel_time = self.get_travel_time(self.target_coord)
-
-                if self.opposite.idle:
-                    xcoord = (self.current_coord[0] + travel_time * self.x_velocity
-                              * np.sign(self.target_coord[0] - self.current_coord[0]))
-                    xcoord_opposite = self.opposite.current_coord[0]
-
-                    if self.id == 0 and xcoord > xcoord_opposite - self.safety_margin:
-                        flag = True
-                        target_coord_opposite = (xcoord + self.safety_margin, self.opposite.current_coord[1])
-                    elif self.id == 1 and xcoord < xcoord_opposite + self.safety_margin:
-                        flag = True
-                        target_coord_opposite = (xcoord - self.safety_margin, self.opposite.current_coord[1])
-                    else:
-                        flag = False
-
-                    if flag:
-                        if not self.opposite.waiting_event.triggered:
-                            self.opposite.waiting_event.succeed(target_coord_opposite)
-
-                yield self.env.timeout(travel_time)
-
-                self.opposite.update_location(self.env.now)
-                self.update_location(self.env.now, on_location=True)
-
-                if self.monitor.use_recording:
-                    self.monitor.record(self.env.now, event="Move_to",
-                                        location=self.location_mapping[self.current_coord].name, resource=self.name,
-                                        item=self.job.name if self.job is not None else None,
-                                        destination=self.to_location)
-
-                if added_travel_time > 0.0:
-                    self.avoiding_time += added_travel_time
-
-                self.priority_queue.remove(self.name)
-                self.opposite.priority_queue.remove(self.name)
-
-                if self.status == "loading":
-                    self.empty_travel_time += (travel_time - added_travel_time)
-                    self.status = "unloading"
-                elif self.status == "unloading":
-                    self.current_working_order = None
-                    self.status = "waiting"
-
-                break
 
     def _check_interference(self):
         blocking_flag, min_xcoord, max_xcoord = self._check_blocking()
@@ -639,7 +704,10 @@ class InputPoint:
         operation = job.get_current_operation()
 
         if self.monitor.use_recording:
-            self.monitor.record(self.env.now, location=self.name, job=job.name, event="Job_Arrived")
+            self.monitor.record(self.env.now,
+                                location=self.name,
+                                job=job.name,
+                                event="Job_Arrived")
 
         self.monitor.add_to_queue(job, scheduling_mode="machine")
         self.monitor.set_scheduling_flag(scheduling_mode="machine")
@@ -665,8 +733,13 @@ class InputPoint:
             crane.add_to_queue((job.id, job.current_location, job.next_location))
 
             if self.monitor.use_recording:
-                self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called",
-                                    resource=crane_name, idle=crane.idle, destination=job.next_location,
+                self.monitor.record(self.env.now,
+                                    location=self.name,
+                                    job=job.name,
+                                    event="Crane_Called",
+                                    resource=crane_name,
+                                    idle=crane.idle,
+                                    destination=job.next_location,
                                     queue=crane.queue[:])
 
             if crane.idle and (not crane.waiting_event.triggered):
@@ -758,8 +831,11 @@ class Machine:
         self.monitor.operations_working[operation.id] = operation
 
         if self.monitor.use_recording:
-            self.monitor.record(self.env.now, location=self.name, job=job.name,
-                                operation=operation.name, event="Working_Started")
+            self.monitor.record(self.env.now,
+                                location=self.name,
+                                job=job.name,
+                                operation=operation.name,
+                                event="Working_Started")
 
         processing_time = operation.get_processing_time(self.local_id)
         operation.start_time = self.env.now
@@ -767,8 +843,11 @@ class Machine:
         yield self.env.timeout(processing_time)
 
         if self.monitor.use_recording:
-            self.monitor.record(self.env.now, location=self.name, job=job.name,
-                                operation=operation.name, event="Working Finished")
+            self.monitor.record(self.env.now,
+                                location=self.name,
+                                job=job.name,
+                                operation=operation.name,
+                                event="Working Finished")
 
         self.working_time += processing_time
         self.completion_time = self.env.now
@@ -806,8 +885,13 @@ class Machine:
                 crane.add_to_queue((job.id, job.current_location, job.next_location))
 
                 if self.monitor.use_recording:
-                    self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called",
-                                        resource=crane_name, idle=crane.idle, destination=job.next_location,
+                    self.monitor.record(self.env.now,
+                                        location=self.name,
+                                        job=job.name,
+                                        event="Crane_Called",
+                                        resource=crane_name,
+                                        idle=crane.idle,
+                                        destination=job.next_location,
                                         queue=crane.queue[:])
 
                 if not reassign:
@@ -888,10 +972,15 @@ class Buffer:
 
         if self.monitor.use_recording:
             if operation is not None:
-                self.monitor.record(self.env.now, location=self.name, job=job.name,
-                                    operation=operation.name, event="Waiting Started")
+                self.monitor.record(self.env.now,
+                                    location=self.name,
+                                    job=job.name,
+                                    operation=operation.name,
+                                    event="Waiting Started")
             else:
-                self.monitor.record(self.env.now, location=self.name, job=job.name,
+                self.monitor.record(self.env.now,
+                                    location=self.name,
+                                    job=job.name,
                                     event="Waiting Started")
 
         if operation is not None:
@@ -907,10 +996,15 @@ class Buffer:
 
         if self.monitor.use_recording:
             if operation is not None:
-                self.monitor.record(self.env.now, location=self.name, job=job.name,
-                                    operation=operation.name, event="Waiting Finished")
+                self.monitor.record(self.env.now,
+                                    location=self.name,
+                                    job=job.name,
+                                    operation=operation.name,
+                                    event="Waiting Finished")
             else:
-                self.monitor.record(self.env.now, location=self.name, job=job.name,
+                self.monitor.record(self.env.now,
+                                    location=self.name,
+                                    job=job.name,
                                     event="Waiting Finished")
 
         del self.jobs_in_process[job.id]
@@ -934,8 +1028,13 @@ class Buffer:
             crane.add_to_queue((job.id, job.current_location, job.next_location))
 
             if self.monitor.use_recording:
-                self.monitor.record(self.env.now, location=self.name, job=job.name, event="Crane_Called",
-                                    resource=crane_name, idle=crane.idle, destination=job.next_location,
+                self.monitor.record(self.env.now,
+                                    location=self.name,
+                                    job=job.name,
+                                    event="Crane_Called",
+                                    resource=crane_name,
+                                    idle=crane.idle,
+                                    destination=job.next_location,
                                     queue=crane.queue[:])
 
             if crane.idle and (not crane.waiting_event.triggered):
@@ -978,7 +1077,10 @@ class OutputPoint:
 
     def _departure(self, job):
         if self.monitor.use_recording:
-            self.monitor.record(self.env.now, location=self.name, job=job.name, event="Job_Completed")
+            self.monitor.record(self.env.now,
+                                location=self.name,
+                                job=job.name,
+                                event="Job_Completed")
 
         yield self.env.timeout(0)
 
@@ -1007,7 +1109,10 @@ class Sink:
         self.completion_time = self.env.now
 
         if self.monitor.use_recording:
-            self.monitor.record(self.env.now, location=self.name, job=job.name, event="Job_Degenerated")
+            self.monitor.record(self.env.now,
+                                location=self.name,
+                                job=job.name,
+                                event="Job_Degenerated")
 
 
 class Monitor:
@@ -1035,6 +1140,7 @@ class Monitor:
         self.next_location = []
         self.event = []
         self.resource = []
+        self.coord = []
         self.idle = []
         self.blocked = []
         self.avoidance = []
@@ -1074,7 +1180,7 @@ class Monitor:
             return job
 
     def record(self, time, location=None, job=None, operation=None, next_location=None, event=None,
-               resource=None, idle=None, blocked=None, avoidance=None, item=None, destination=None, queue=None):
+               resource=None, coord=None, idle=None, blocked=None, avoidance=None, item=None, destination=None, queue=None):
         self.time.append(time)
         self.location.append(location)
         self.job.append(job)
@@ -1082,6 +1188,7 @@ class Monitor:
         self.next_location.append(next_location)
         self.event.append(event)
         self.resource.append(resource)
+        self.coord.append(coord)
         self.idle.append(idle)
         self.blocked.append(blocked)
         self.avoidance.append(avoidance)
@@ -1091,7 +1198,7 @@ class Monitor:
 
     def get_logs(self, file_path=None):
         df_log = pd.DataFrame(columns=['Time', 'Location', 'Job', 'Operation', 'Next_Location', 'Event',
-                                       'Resource', 'Idle', 'Blocked', 'Avoidance', 'Item', 'Destination', 'Queue'])
+                                       'Resource', 'Coord', 'Idle', 'Blocked', 'Avoidance', 'Item', 'Destination', 'Queue'])
         df_log['Time'] = self.time
         df_log['Location'] = self.location
         df_log['Job'] = self.job
@@ -1099,6 +1206,7 @@ class Monitor:
         df_log['Next_Location'] = self.next_location
         df_log['Event'] = self.event
         df_log['Resource'] = self.resource
+        df_log['Coord'] = self.coord
         df_log['Idle'] = self.idle
         df_log['Blocked'] = self.blocked
         df_log['Avoidance'] = self.avoidance
