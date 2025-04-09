@@ -34,7 +34,7 @@ def get_config():
     parser.add_argument("--num_actor_layers", type=int, default=2, help="number of actor layers")
     parser.add_argument("--num_critic_layers", type=int, default=2, help="number of critic layers")
 
-    parser.add_argument("--num_episodes", type=int, default=10000, help="number of episodes")
+    parser.add_argument("--num_episodes", type=int, default=5000, help="number of episodes")
     parser.add_argument("--lr", type=float, default=0.00001, help="learning rate")
     parser.add_argument("--lr_decay", type=float, default=1.0, help="learning rate decay ratio")
     parser.add_argument("--lr_step", type=int, default=100, help="step size to reduce learning rate")
@@ -47,8 +47,8 @@ def get_config():
     parser.add_argument("--V_coeff", type=float, default=0.5, help="coefficient for value loss")
     parser.add_argument("--E_coeff", type=float, default=0.01, help="coefficient for entropy loss")
 
-    parser.add_argument("--eval_every", type=int, default=100, help="Evaluate every x episodes")
-    parser.add_argument("--save_every", type=int, default=1000, help="Save a model every x episodes")
+    parser.add_argument("--eval_every", type=int, default=50, help="Evaluate every x episodes")
+    parser.add_argument("--save_every", type=int, default=500, help="Save a model every x episodes")
     parser.add_argument("--reset_every", type=int, default=1, help="Generate new instances every x episodes")
 
     parser.add_argument("--val_dir", type=str, default=None, help="directory where the validation data are stored")
@@ -56,9 +56,8 @@ def get_config():
     return parser.parse_args()
 
 
-if __name__ == "__main__":
-    date = datetime.now().strftime('%m%d_%H_%M')
-    config = get_config()
+def train(config):
+    # date = datetime.now().strftime('%m%d_%H_%M')
 
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_vessl = False if config.no_vessl else True
@@ -106,12 +105,16 @@ if __name__ == "__main__":
 
     val_dir = config.val_dir
 
+    with open(val_dir + "setting.json", 'r') as f:
+        setting = json.load(f)
+
+    name = (setting["num_jobs"], setting["num_machines"], config.fjsp_algorithm, config.ct_algorithm)
     if use_vessl:
-        model_dir = '/output/train/' + date + '/model/'
-        log_dir = '/output/train/' + date + '/log/'
+        model_dir = '/output/train/model/%d-%d/%s-%s/' % name
+        log_dir = '/output/train/log/%d-%d/%s-%s/' % name
     else:
-        model_dir = './output/train/' + date + '/model/'
-        log_dir = './output/train/' + date + '/log/'
+        model_dir = './output/train/model/%d-%d/%s-%s/' % name
+        log_dir = './output/train/log/%d-%d/%s-%s/' % name
 
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
@@ -121,9 +124,6 @@ if __name__ == "__main__":
 
     with open(log_dir + "parameters.json", 'w') as f:
         json.dump(vars(config), f, indent=4)
-
-    with open(val_dir + "setting.json", 'r') as f:
-        setting = json.load(f)
 
     data_src = DataGenerator(num_inputs=setting["num_inputs"],
                              num_outputs=setting["num_outputs"],
@@ -345,3 +345,15 @@ if __name__ == "__main__":
 
     if not use_vessl:
         writer.close()
+
+
+if __name__ == "__main__":
+    config = get_config()
+
+    train_case = [("RL", "SETT"), ("RL", "LOR"), ("RL", "LWKR"), ("RL", "RAND"),
+                  ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL"), ("RAND", "RL")]
+
+    for fjsp_algorithm, ct_algorithm in train_case:
+        config.fjsp_algorithm = fjsp_algorithm
+        config.ct_algorithm = ct_algorithm
+        train(config)
