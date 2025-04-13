@@ -14,6 +14,11 @@ class Crane:
         self.x_velocity = x_velocity
         self.y_velocity = y_velocity
 
+        self.x_min = int(np.min([location.coord[0] for location in locations.values()]))
+        self.y_min = int(np.min([location.coord[1] for location in locations.values()]))
+        self.x_max = int(np.max([location.coord[0] for location in locations.values()]))
+        self.y_max = int(np.max([location.coord[1] for location in locations.values()]))
+
         self.opposite = None
         self.queue = []
         self.location_mapping = {}
@@ -131,6 +136,9 @@ class Crane:
             if flag_update:
                 xcoord = xcoord + time_elapsed * self.x_velocity * x_direction
                 ycoord = ycoord + time_elapsed * self.y_velocity * y_direction
+
+        xcoord = np.clip(xcoord, a_min=self.x_min, a_max=self.x_max)
+        ycoord = np.clip(ycoord, a_min=self.y_min, a_max=self.y_max)
 
         self.update_time = time
         self.current_coord = (xcoord, ycoord)
