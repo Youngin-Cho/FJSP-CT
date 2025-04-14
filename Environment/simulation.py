@@ -277,10 +277,10 @@ class Crane:
         cnt = 0
         while True:
             cnt += 1
-            if cnt > 100:
+            if cnt > 1000:
                 self.monitor.get_logs("./temp.xlsx")
                 print("Error!")
-                assert cnt < 100
+                assert cnt < 1000
 
             avoidance, safety_xcoord = self._check_interference()
 
