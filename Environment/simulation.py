@@ -183,7 +183,7 @@ class Crane:
                         self.monitor.record(self.env.now,
                                             event="Waiting_Started",
                                             resource=self.name,
-                                            coord=self.current_coord)
+                                            current_coord=self.current_coord)
 
                     self.waiting_event = self.env.event()
                     target_coord = yield self.waiting_event
@@ -193,7 +193,7 @@ class Crane:
                         self.monitor.record(self.env.now,
                                             event="Waiting_Finished",
                                             resource=self.name,
-                                            coord=self.current_coord)
+                                            current_coord=self.current_coord)
 
                     self.idle_time += waiting_finish - waiting_start
 
@@ -219,7 +219,8 @@ class Crane:
                     self.monitor.record(self.env.now,
                                         event="Order_Assigned",
                                         resource=self.name,
-                                        coord=self.current_coord,
+                                        current_order=working_order,
+                                        current_coord=self.current_coord,
                                         destination=current_location,
                                         queue=self.queue[:])
 
@@ -243,7 +244,8 @@ class Crane:
                                         event="Get",
                                         location=self.locations[self.to_location].name,
                                         resource=self.name,
-                                        coord=self.current_coord,
+                                        current_order=working_order,
+                                        current_coord=self.current_coord,
                                         item=self.job.name)
 
                 self.priority_queue.append(self.name)
@@ -264,7 +266,8 @@ class Crane:
                                         event="Put",
                                         location=self.locations[self.to_location].name,
                                         resource=self.name,
-                                        coord=self.current_coord,
+                                        current_order=working_order,
+                                        current_coord=self.current_coord,
                                         item=self.job.name)
 
                 self.target_coord = (-1.0, -1.0)
@@ -288,7 +291,8 @@ class Crane:
                 self.monitor.record(self.env.now,
                                     event="Check_Priority",
                                     resource=self.name,
-                                    coord=self.current_coord,
+                                    current_order=self.current_working_order,
+                                    current_coord=self.current_coord,
                                     item=self.job.name if self.job is not None else None,
                                     blocked=self.blocked,
                                     avoidance=avoidance,
@@ -308,7 +312,10 @@ class Crane:
                                             location=self.location_mapping[self.current_coord].name
                                                 if self.location_mapping.get(self.current_coord) is not None else None,
                                             resource=self.name,
-                                            coord=self.current_coord,
+                                            current_order=self.current_working_order,
+                                            current_coord=self.current_coord,
+                                            safety_coord=self.safety_coord,
+                                            target_coord=self.target_coord,
                                             item=self.job.name if self.job is not None else None,
                                             destination=self.to_location)
 
@@ -323,7 +330,10 @@ class Crane:
                                             location=self.location_mapping[self.current_coord].name
                                                 if self.location_mapping.get(self.current_coord) is not None else None,
                                             resource=self.name,
-                                            coord=self.current_coord,
+                                            current_order=self.current_working_order,
+                                            current_coord=self.current_coord,
+                                            safety_coord=self.safety_coord,
+                                            target_coord=self.target_coord,
                                             item=self.job.name if self.job is not None else None,
                                             destination=self.to_location)
 
@@ -345,7 +355,9 @@ class Crane:
                                                 location=self.location_mapping[self.current_coord].name
                                                     if self.location_mapping.get(self.current_coord) is not None else None,
                                                 resource=self.name,
-                                                coord=self.current_coord,
+                                                current_order=self.current_working_order,
+                                                current_coord=self.current_coord,
+                                                target_coord=self.target_coord,
                                                 item=self.job.name if self.job is not None else None,
                                                 destination=self.to_location)
 
@@ -362,7 +374,9 @@ class Crane:
                                                 location=self.location_mapping[self.current_coord].name
                                                     if self.location_mapping.get(self.current_coord) is not None else None,
                                                 resource=self.name,
-                                                coord=self.current_coord,
+                                                current_order=self.current_working_order,
+                                                current_coord=self.current_coord,
+                                                target_coord=self.target_coord,
                                                 item=self.job.name if self.job is not None else None,
                                                 destination=self.to_location)
 
@@ -374,7 +388,9 @@ class Crane:
                                             location=self.location_mapping[self.current_coord].name
                                                 if self.location_mapping.get(self.current_coord) is not None else None,
                                             resource=self.name,
-                                            coord=self.current_coord,
+                                            current_order=self.current_working_order,
+                                            current_coord=self.current_coord,
+                                            target_coord=self.target_coord,
                                             item=self.job.name if self.job is not None else None,
                                             destination=self.to_location)
 
@@ -409,7 +425,9 @@ class Crane:
                                             location=self.location_mapping[self.current_coord].name
                                                 if self.location_mapping.get(self.current_coord) is not None else None,
                                             resource=self.name,
-                                            coord=self.current_coord,
+                                            current_order=self.current_working_order,
+                                            current_coord=self.current_coord,
+                                            target_coord=self.target_coord,
                                             item=self.job.name if self.job is not None else None,
                                             destination=self.to_location)
 
@@ -438,7 +456,9 @@ class Crane:
                                         location=self.location_mapping[self.current_coord].name
                                             if self.location_mapping.get(self.current_coord) is not None else None,
                                         resource=self.name,
-                                        coord=self.current_coord,
+                                        current_order=self.current_working_order,
+                                        current_coord=self.current_coord,
+                                        target_coord=self.target_coord,
                                         item=self.job.name if self.job is not None else None,
                                         destination=self.to_location)
 
@@ -746,6 +766,7 @@ class InputPoint:
                                     job=job.name,
                                     event="Crane_Called",
                                     resource=crane_name,
+                                    current_order=crane.current_working_order,
                                     idle=crane.idle,
                                     destination=job.next_location,
                                     queue=crane.queue[:])
@@ -898,6 +919,7 @@ class Machine:
                                         job=job.name,
                                         event="Crane_Called",
                                         resource=crane_name,
+                                        current_order=crane.current_working_order,
                                         idle=crane.idle,
                                         destination=job.next_location,
                                         queue=crane.queue[:])
@@ -1041,6 +1063,7 @@ class Buffer:
                                     job=job.name,
                                     event="Crane_Called",
                                     resource=crane_name,
+                                    current_order=crane.current_working_order,
                                     idle=crane.idle,
                                     destination=job.next_location,
                                     queue=crane.queue[:])
@@ -1148,7 +1171,10 @@ class Monitor:
         self.next_location = []
         self.event = []
         self.resource = []
-        self.coord = []
+        self.current_order = []
+        self.current_coord = []
+        self.safety_coord = []
+        self.target_coord = []
         self.idle = []
         self.blocked = []
         self.avoidance = []
@@ -1188,7 +1214,8 @@ class Monitor:
             return job
 
     def record(self, time, location=None, job=None, operation=None, next_location=None, event=None,
-               resource=None, coord=None, idle=None, blocked=None, avoidance=None, item=None, destination=None, queue=None):
+               resource=None, current_order=None, current_coord=None, safety_coord=None, target_coord=None,
+               idle=None, blocked=None, avoidance=None, item=None, destination=None, queue=None):
         self.time.append(time)
         self.location.append(location)
         self.job.append(job)
@@ -1196,7 +1223,10 @@ class Monitor:
         self.next_location.append(next_location)
         self.event.append(event)
         self.resource.append(resource)
-        self.coord.append(coord)
+        self.current_order.append(current_order)
+        self.current_coord.append(current_coord)
+        self.safety_coord.append(safety_coord)
+        self.target_coord.append(target_coord)
         self.idle.append(idle)
         self.blocked.append(blocked)
         self.avoidance.append(avoidance)
@@ -1206,7 +1236,8 @@ class Monitor:
 
     def get_logs(self, file_path=None):
         df_log = pd.DataFrame(columns=['Time', 'Location', 'Job', 'Operation', 'Next_Location', 'Event',
-                                       'Resource', 'Coord', 'Idle', 'Blocked', 'Avoidance', 'Item', 'Destination', 'Queue'])
+                                       'Resource', 'Current_Order', 'Current_Coord', 'Safety_Coord', 'Target_Coord',
+                                       'Idle', 'Blocked', 'Avoidance', 'Item', 'Destination', 'Queue'])
         df_log['Time'] = self.time
         df_log['Location'] = self.location
         df_log['Job'] = self.job
@@ -1214,12 +1245,15 @@ class Monitor:
         df_log['Next_Location'] = self.next_location
         df_log['Event'] = self.event
         df_log['Resource'] = self.resource
-        df_log['Coord'] = self.coord
+        df_log['Current_Coord'] = self.current_coord
+        df_log['Safety_Coord'] = self.safety_coord
+        df_log['Target_Coord'] = self.target_coord
         df_log['Idle'] = self.idle
         df_log['Blocked'] = self.blocked
         df_log['Avoidance'] = self.avoidance
         df_log['Item'] = self.item
         df_log['Destination'] = self.destination
+        df_log['Current_Order'] = self.current_order
         df_log['Queue'] = self.queue
 
         if file_path is not None:
