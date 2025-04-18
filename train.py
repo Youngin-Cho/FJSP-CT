@@ -25,8 +25,8 @@ def get_config():
     parser.add_argument("--load_model", type=int, default=0, help="whether to load the trained model (0: False, 1:True)")
     parser.add_argument("--model_path", type=str, default=None, help="model file path")
 
-    parser.add_argument("--fjsp_algorithm", type=str, default="RL", help="fjsp agent")
-    parser.add_argument("--ct_algorithm", type=str, default="SETT", help="ct agent")
+    parser.add_argument("--fjsp_algorithm", type=str, default=None, help="fjsp agent")
+    parser.add_argument("--ct_algorithm", type=str, default=None, help="ct agent")
 
     parser.add_argument("--embed_dim", type=int, default=128, help="node embedding dimension")
     parser.add_argument("--num_heads", type=int, default=4, help="multi-head attention in HGT layers")
@@ -110,8 +110,8 @@ def train(config):
 
     name = (setting["num_jobs"], setting["num_machines"], config.fjsp_algorithm, config.ct_algorithm)
     if use_vessl:
-        model_dir = '/output/train/model/%d-%d/%s-%s/' % name
-        log_dir = '/output/train/log/%d-%d/%s-%s/' % name
+        model_dir = './output/train/model/%d-%d/%s-%s/' % name
+        log_dir = './output/train/log/%d-%d/%s-%s/' % name
     else:
         model_dir = './output/train/model/%d-%d/%s-%s/' % name
         log_dir = './output/train/log/%d-%d/%s-%s/' % name
@@ -296,6 +296,7 @@ def train(config):
             step += 1
 
             if done:
+                # env.monitor.get_logs("./temp%d.xlsx" % e)
                 break
 
         print("episode: %d | reward: %.4f | loss: %.4f" % (e, episode_reward, episode_average_loss / step))
@@ -350,8 +351,21 @@ def train(config):
 if __name__ == "__main__":
     config = get_config()
 
-    train_case = [("RL", "SETT"), ("RL", "LOR"), ("RL", "LWKR"), ("RL", "RAND"),
-                  ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL"), ("RAND", "RL")]
+    if (config.fjsp_algorithm is not None) and (config.ct_algorithm is not None):
+        assert config.fjsp_algorithm == "RL" or config.ct_algorithm == "RL"
+        train_case = [(config.fjsp_algorithm, config.ct_algorithm)]
+
+    elif (config.fjsp_algorithm is not None) and (config.ct_algorithm is None):
+        assert config.fjsp_algorithm == "RL"
+        train_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"), ("RL", "RAND")]
+
+    elif (config.fjsp_algorithm is None) and (config.ct_algorithm is not None):
+        assert config.ct_algorithm == "RL"
+        train_case = [("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL"), ("RAND", "RL")]
+
+    else:
+        train_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"), ("RL", "RAND"),
+                      ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL"), ("RAND", "RL")]
 
     for fjsp_algorithm, ct_algorithm in train_case:
         config.fjsp_algorithm = fjsp_algorithm
