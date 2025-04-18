@@ -4,6 +4,7 @@ import json
 import random
 import argparse
 import torch
+import numpy as np
 import pandas as pd
 
 from torch.distributions.categorical import Categorical
@@ -20,13 +21,14 @@ def get_config():
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
 
+    parser.add_argument("--num_iterations", type=int, default=10, help="number of iterations")
     parser.add_argument("--random_seed", type=int, default=42, help="random seed")
 
     parser.add_argument("--num_jobs", type=int, default=10, help="number of jobs")
     parser.add_argument("--num_machines", type=int, default=5, help="number of machines")
 
-    parser.add_argument("--fjsp_algorithm", type=str, default="RL", help="fjsp agent")
-    parser.add_argument("--ct_algorithm", type=str, default="SETT", help="ct agent")
+    parser.add_argument("--fjsp_algorithm", type=str, default=None, help="fjsp agent")
+    parser.add_argument("--ct_algorithm", type=str, default=None, help="ct agent")
 
     parser.add_argument("--fjsp_model_path", type=str, default=None, help="model file path for the fjsp agent")
     parser.add_argument("--fjsp_param_path", type=str, default=None, help="hyper-parameter file path for the fjsp agent")
@@ -57,15 +59,16 @@ def test(config):
     data_dir = config.data_dir
     test_paths = os.listdir(data_dir)
 
-    progress = 0
-    makespans = []
-    computing_times = []
+    makespans = [[] for _ in range(config.num_iterations)]
+    computing_times = [[] for _ in range(config.num_iterations)]
+
+    print("==========Test of %s+%s started==========" % (fjsp_algorithm, ct_algorithm))
 
     for filename in test_paths:
         if filename.split(".")[-1] != "xlsx":
             continue
 
-        random.seed(random_seed)
+        instance_name = filename.split(".")[-2]
 
         data_src = data_dir + filename
         env = Factory(data_src, algorithm=(fjsp_algorithm, ct_algorithm), use_recording=use_recording)
@@ -112,50 +115,55 @@ def test(config):
         else:
             ct_agent = CTHeuristic(ct_algorithm)
 
-        start = time.time()
-        fjsp_state = env.reset()
-        done = False
+        for i in range(config.num_iterations):
+            random.seed(random_seed + i)
 
-        while not done:
-            mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
+            start = time.time()
+            fjsp_state = env.reset()
+            done = False
 
-            if mode == "fjsp":
-                if fjsp_algorithm == "RL":
-                    fjsp_action, _, _ = fjsp_agent.act(graph_feature=fjsp_state.graph_feature,
-                                                       pairwise_feature=fjsp_state.pairwise_feature,
-                                                       mask=fjsp_state.mask,
-                                                       current_operations=fjsp_state.current_operations,
-                                                       reorder_idx=fjsp_state.reorder_idx)
+            while not done:
+                mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
+
+                if mode == "fjsp":
+                    if fjsp_algorithm == "RL":
+                        fjsp_action, _, _ = fjsp_agent.act(graph_feature=fjsp_state.graph_feature,
+                                                           pairwise_feature=fjsp_state.pairwise_feature,
+                                                           mask=fjsp_state.mask,
+                                                           current_operations=fjsp_state.current_operations,
+                                                           reorder_idx=fjsp_state.reorder_idx)
+                    else:
+                        fjsp_action = fjsp_agent.act(fjsp_state)
+
+                    next_ct_state, reward, done = env.step(fjsp_action)
                 else:
-                    fjsp_action = fjsp_agent.act(fjsp_state)
+                    if ct_algorithm == "RL":
+                        ct_action, _, _ = ct_agent.act(graph_feature=ct_state.graph_feature,
+                                                       pairwise_feature=ct_state.pairwise_feature,
+                                                       mask=ct_state.mask)
+                    else:
+                        ct_action = ct_agent.act(ct_state)
 
-                next_ct_state, reward, done = env.step(fjsp_action)
-            else:
-                if ct_algorithm == "RL":
-                    ct_action, _, _ = ct_agent.act(graph_feature=ct_state.graph_feature,
-                                                   pairwise_feature=ct_state.pairwise_feature,
-                                                   mask=ct_state.mask)
+                    next_fjsp_state, reward, done = env.step(ct_action)
+
+                if mode == "fjsp":
+                    ct_state = next_ct_state
                 else:
-                    ct_action = ct_agent.act(ct_state)
+                    fjsp_state = next_fjsp_state
 
-                next_fjsp_state, reward, done = env.step(ct_action)
+                if done:
+                    finish = time.time()
+                    makespan = env.sink.completion_time
+                    computing_time = finish - start
+                    break
 
-            if mode == "fjsp":
-                ct_state = next_ct_state
-            else:
-                fjsp_state = next_fjsp_state
+            makespans[i].append(makespan)
+            computing_times[i].append(computing_time)
 
-            if done:
-                finish = time.time()
-                makespan = env.sink.completion_time
-                computing_time = finish - start
-                break
+            print("%d/%d iteration for %s done" % (i + 1, config.num_iterations, instance_name))
 
-        makespans.append(makespan)
-        computing_times.append(computing_time)
-
-        progress += 1
-        print("%d/%d test for %s done" % (progress, len(test_paths) - 1, fjsp_algorithm + "+" + ct_algorithm))
+    makespans = np.array(makespans).transpose()
+    computing_times = np.array(computing_times).transpose()
 
     return makespans, computing_times
 
@@ -163,14 +171,24 @@ def test(config):
 if __name__ == "__main__":
     config = get_config()
 
-    test_case = [(fjsp, ct)
-                 for fjsp in ["SPT", "MOR", "MWKR", "RAND"]
-                 for ct in ["SETT", "LOR", "LWKR", "RAND"]]
-    file_name = "(Heuristics) test results.xlsx"
+    if (config.fjsp_algorithm is not None) and (config.ct_algorithm is not None):
+        test_case = [(config.fjsp_algorithm, config.ct_algorithm)]
 
-    # test_case = [("RL", "SETT"), ("RL", "LOR"), ("RL", "LWKR"), ("RL", "RAND"),
-    #               ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL"), ("RAND", "RL")]
-    # file_name = "(Single RL) test results.xlsx"
+    elif (config.fjsp_algorithm is not None) and (config.ct_algorithm is None):
+        test_case = [(config.fjsp_algorithm, "SETT"),
+                     (config.fjsp_algorithm, "TDD"),
+                     (config.fjsp_algorithm, "TDT"),
+                     (config.fjsp_algorithm, "RAND")]
+
+    elif (config.fjsp_algorithm is None) and (config.ct_algorithm is not None):
+        test_case = [("SPT", config.ct_algorithm),
+                     ("MOR", config.ct_algorithm),
+                     ("MWKR", config.ct_algorithm),
+                     ("RAND", config.ct_algorithm)]
+
+    else:
+        test_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"), ("RL", "RAND"),
+                     ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL"), ("RAND", "RL")]
 
     config.data_dir = "./input/test/%d-%d/" % (config.num_jobs, config.num_machines)
     config.res_dir = "./output/test/%d-%d/" % (config.num_jobs, config.num_machines)
@@ -180,11 +198,8 @@ if __name__ == "__main__":
 
     index = [int(os.path.splitext(filename)[0].split("-")[1])
              for filename in os.listdir(config.data_dir)
-             if os.path.splitext(filename)[1] == '.xlsx'] + ["avg"]
-    columns = [case[0] + "+" + case[1] for case in test_case]
-
-    df_makespan = pd.DataFrame(index=index, columns=columns)
-    df_computing_time = pd.DataFrame(index=index, columns=columns)
+             if os.path.splitext(filename)[1] == '.xlsx']
+    columns = [i for i in range(config.num_iterations)]
 
     for fjsp_algorithm, ct_algorithm in test_case:
         config.fjsp_algorithm = fjsp_algorithm
@@ -222,12 +237,19 @@ if __name__ == "__main__":
 
         makespans, computing_times = test(config)
 
-        algorithm = fjsp_algorithm + "+" + ct_algorithm
-        df_makespan[algorithm] = makespans + [sum(makespans) / len(makespans)]
-        df_computing_time[algorithm] = computing_times + [sum(computing_times) / len(computing_times)]
-        print("==========test for %s finished==========" % algorithm)
+        df_makespan = pd.DataFrame(makespans, index=index, columns=columns)
+        df_computing_time = pd.DataFrame(computing_times, index=index, columns=columns)
 
-    writer = pd.ExcelWriter(config.res_dir + file_name)
-    df_makespan.to_excel(writer, sheet_name="makespan")
-    df_computing_time.to_excel(writer, sheet_name="computing_time")
-    writer.close()
+        df_makespan["avg"] = df_makespan.mean(axis=1)
+        df_computing_time["avg"] = df_computing_time.mean(axis=1)
+
+        df_makespan.loc["avg"] = df_makespan.mean(axis=0)
+        df_computing_time.loc["avg"] = df_computing_time.mean(axis=0)
+
+        file_name = "(%s+%s) test results.xlsx" % (fjsp_algorithm, ct_algorithm)
+        writer = pd.ExcelWriter(config.res_dir + file_name)
+        df_makespan.to_excel(writer, sheet_name="makespan")
+        df_computing_time.to_excel(writer, sheet_name="computing_time")
+        writer.close()
+
+        print("==========Test of %s+%s finished==========" % (fjsp_algorithm, ct_algorithm))
