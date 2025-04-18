@@ -115,7 +115,7 @@ class Factory:
         }
 
         self.ct_crane_feature_dim = 6
-        self.ct_location_feature_dim = 4
+        self.ct_location_feature_dim = 8
         self.ct_pairwise_feature_dim = 2
 
         self.ct_meta_data = (
@@ -868,12 +868,12 @@ class Factory:
                     f6 = last_visited_time[location.name]["put"]
 
                     location_feature[location.global_id, :4] = [f1, f2, f3, f4]
-                    # location_feature[location.global_id, 4:6] = f5
-                    # location_feature[location.global_id, 6:8] = f6
+                    location_feature[location.global_id, 4:6] = f5
+                    location_feature[location.global_id, 6:8] = f6
 
-                # denominator = np.max(location_feature[:, 4:])
-                # if denominator != 0:
-                #     location_feature[:, 4:] = location_feature[:, 4:] / denominator
+                denominator = np.max(location_feature[:, 4:])
+                if denominator != 0:
+                    location_feature[:, 4:] = location_feature[:, 4:] / denominator
 
                 # Pairwise Feature
                 current_location = self.monitor.queue_for_crane_scheduling.current_location
