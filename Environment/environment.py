@@ -115,7 +115,7 @@ class Factory:
         }
 
         self.ct_crane_feature_dim = 6
-        self.ct_location_feature_dim = 8
+        self.ct_location_feature_dim = 4
         self.ct_pairwise_feature_dim = 2
 
         self.ct_meta_data = (
@@ -868,12 +868,12 @@ class Factory:
                     f6 = last_visited_time[location.name]["put"]
 
                     location_feature[location.global_id, :4] = [f1, f2, f3, f4]
-                    location_feature[location.global_id, 4:6] = f5
-                    location_feature[location.global_id, 6:8] = f6
+                    # location_feature[location.global_id, 4:6] = f5
+                    # location_feature[location.global_id, 6:8] = f6
 
-                denominator = np.max(location_feature[:, 4:])
-                if denominator != 0:
-                    location_feature[:, 4:] = location_feature[:, 4:] / denominator
+                # denominator = np.max(location_feature[:, 4:])
+                # if denominator != 0:
+                #     location_feature[:, 4:] = location_feature[:, 4:] / denominator
 
                 # Pairwise Feature
                 current_location = self.monitor.queue_for_crane_scheduling.current_location
@@ -988,41 +988,67 @@ class Factory:
 
                         priority_idx[location_id, crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1.0
 
-                elif crane_scheduling_algorithm == "LOR":
+                elif crane_scheduling_algorithm == "TDD":
                     for crane in self.resources.values():
-                        remaining_jobs = 0
-                        if crane.current_working_order is not None:
-                            remaining_jobs += 1
-                        remaining_jobs += len(crane.queue)
-
-                        priority_idx[location_id, crane.id] = 1 / remaining_jobs if remaining_jobs > 0 else 1.0
-
-                elif crane_scheduling_algorithm == "LWKR":
-                    for crane in self.resources.values():
-                        sequence = []
-                        if crane.current_working_order is not None:
-                            if crane.to_location == crane.current_working_order[1]:
-                                sequence.append(crane.current_working_order[1])
-                                sequence.append(crane.current_working_order[2])
+                        if crane.id == 0:
+                            if self.locations[job.current_location].coord[0] <= self.x_max / 2:
+                                priority_idx[location_id, crane.id] = 1.0
                             else:
-                                sequence.append(crane.current_working_order[2])
-                        for working_order in crane.queue:
-                            sequence.append(working_order[1])
-                            sequence.append(working_order[2])
+                                priority_idx[location_id, crane.id] = 0.5
+                        else:
+                            if self.locations[job.current_location].coord[0] >= self.x_max / 2:
+                                priority_idx[location_id, crane.id] = 1.0
+                            else:
+                                priority_idx[location_id, crane.id] = 0.5
 
-                        remaining_work = 0
-                        current_coord = crane.current_coord
-                        for location_name in sequence:
-                            location_coord = self.locations[location_name].coord
+                elif crane_scheduling_algorithm == "TDT":
+                    for crane in self.resources.values():
+                        if crane.id == 0:
+                            if self.locations[job.next_location].coord[0] <= self.x_max / 2:
+                                priority_idx[location_id, crane.id] = 1.0
+                            else:
+                                priority_idx[location_id, crane.id] = 0.5
+                        else:
+                            if self.locations[job.next_location].coord[0] >= self.x_max / 2:
+                                priority_idx[location_id, crane.id] = 1.0
+                            else:
+                                priority_idx[location_id, crane.id] = 0.5
 
-                            x_travel_time = abs(location_coord[0] - current_coord[0]) / crane.x_velocity
-                            y_travel_time = abs(location_coord[1] - current_coord[1]) / crane.y_velocity
-                            travel_time = max(x_travel_time, y_travel_time)
-                            remaining_work += travel_time
-
-                            current_coord = location_coord
-
-                        priority_idx[location_id, crane.id] = 1 / remaining_work if remaining_work > 0 else 1.0
+                # elif crane_scheduling_algorithm == "LOR":
+                #     for crane in self.resources.values():
+                #         remaining_jobs = 0
+                #         if crane.current_working_order is not None:
+                #             remaining_jobs += 1
+                #         remaining_jobs += len(crane.queue)
+                #
+                #         priority_idx[location_id, crane.id] = 1 / remaining_jobs if remaining_jobs > 0 else 1.0
+                #
+                # elif crane_scheduling_algorithm == "LWKR":
+                #     for crane in self.resources.values():
+                #         sequence = []
+                #         if crane.current_working_order is not None:
+                #             if crane.to_location == crane.current_working_order[1]:
+                #                 sequence.append(crane.current_working_order[1])
+                #                 sequence.append(crane.current_working_order[2])
+                #             else:
+                #                 sequence.append(crane.current_working_order[2])
+                #         for working_order in crane.queue:
+                #             sequence.append(working_order[1])
+                #             sequence.append(working_order[2])
+                #
+                #         remaining_work = 0
+                #         current_coord = crane.current_coord
+                #         for location_name in sequence:
+                #             location_coord = self.locations[location_name].coord
+                #
+                #             x_travel_time = abs(location_coord[0] - current_coord[0]) / crane.x_velocity
+                #             y_travel_time = abs(location_coord[1] - current_coord[1]) / crane.y_velocity
+                #             travel_time = max(x_travel_time, y_travel_time)
+                #             remaining_work += travel_time
+                #
+                #             current_coord = location_coord
+                #
+                #         priority_idx[location_id, crane.id] = 1 / remaining_work if remaining_work > 0 else 1.0
 
                 elif crane_scheduling_algorithm == "RAND":
                     priority_idx[location_id, :] = 1.0
