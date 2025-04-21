@@ -447,7 +447,20 @@ class Crane:
                     break
 
             except simpy.Interrupt as i:
-                self.waiting = False
+                if self.waiting:
+                    self.waiting = False
+                    if self.monitor.use_recording:
+                        self.monitor.record(self.env.now,
+                                            event="Avoiding_wait_finish",
+                                            location=self.location_mapping[self.current_coord].name
+                                            if self.location_mapping.get(self.current_coord) is not None else None,
+                                            resource=self.name,
+                                            current_order=self.current_working_order,
+                                            current_coord=self.current_coord,
+                                            target_coord=self.target_coord,
+                                            item=self.job.name if self.job is not None else None,
+                                            destination=self.to_location)
+
                 self.opposite.update_location(self.env.now)
                 self.update_location(self.env.now)
 
