@@ -447,6 +447,7 @@ class Crane:
                     break
 
             except simpy.Interrupt as i:
+                self.waiting = False
                 self.opposite.update_location(self.env.now)
                 self.update_location(self.env.now)
 
