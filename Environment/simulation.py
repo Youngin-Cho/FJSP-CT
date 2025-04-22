@@ -98,7 +98,7 @@ class Crane:
         queue_from_opposite = set([temp[1] for temp in self.opposite.queue if self.locations[temp[1]].category == 1])
         self.blocked_expected = len(set.intersection(queue_to, queue_from_opposite)) > 0
 
-        if self.opposite.to_location in [temp[1] for temp in self.queue]:
+        if (self.opposite.status == "unloading") and (self.opposite.to_location in [temp[1] for temp in self.queue]):
             self.opposite.moving_process.interrupt()
 
     def set_opposite_crane(self, crane):
@@ -729,6 +729,10 @@ class InputPoint:
 
     def get(self, job_id):
         job = self.jobs_after_process[job_id]
+        operation = job.get_current_operation()
+
+        del self.monitor.operations_loading[operation.id]
+        self.monitor.operations_unloading[operation.id] = operation
 
         del self.processes[job.id]
         del self.jobs_after_process[job_id]
@@ -758,6 +762,7 @@ class InputPoint:
         del self.call_for_machine_scheduling[job.id]
 
         del self.monitor.operations_unscheduled[operation.id]
+        self.monitor.operations_loading[operation.id] = operation
 
         while location_name is not None:
             job.next_location = location_name
@@ -827,11 +832,20 @@ class Machine:
         job.current_location = self.name
         job.next_location = None
 
+        operation = job.get_current_operation()
+        del self.monitor.operations_unloading[operation.id]
+
         self.processes[job.id] = self.env.process(self._work(job))
         self.jobs_in_process[job.id] = job
 
     def get(self, job_id):
         job = self.jobs_after_process[job_id]
+        operation = job.get_current_operation()
+        if operation is None:
+            operation = job.operations[-1]
+
+        del self.monitor.operations_loading[operation.id]
+        self.monitor.operations_unloading[operation.id] = operation
 
         del self.processes[job.id]
         del self.jobs_after_process[job_id]
@@ -910,6 +924,14 @@ class Machine:
         location_name = yield self.call_for_machine_scheduling[job.id]
         del self.call_for_machine_scheduling[job.id]
 
+        operation = job.get_current_operation()
+        if operation is not None:
+            del self.monitor.operations_unscheduled[operation.id]
+            self.monitor.operations_loading[operation.id] = operation
+        else:
+            operation = job.operations[-1]
+            self.monitor.operations_loading[operation.id] = operation
+
         reassign = False
         while location_name is not None:
             job.next_location = location_name
@@ -986,11 +1008,22 @@ class Buffer:
         job.current_location = self.name
         job.next_location = None
 
+        operation = job.get_current_operation()
+        if operation is None:
+            operation = job.operations[-1]
+        del self.monitor.operations_unloading[operation.id]
+
         self.processes[job.id] = self.env.process(self._wait(job))
         self.jobs_in_process[job.id] = job
 
     def get(self, job_id):
         job = self.jobs_after_process[job_id]
+        operation = job.get_current_operation()
+        if operation is None:
+            operation = job.operations[-1]
+
+        del self.monitor.operations_loading[operation.id]
+        self.monitor.operations_unloading[operation.id] = operation
 
         del self.processes[job.id]
         del self.jobs_after_process[job_id]
@@ -1054,6 +1087,12 @@ class Buffer:
         del self.jobs_in_process[job.id]
         self.jobs_after_process[job.id] = job
 
+        if operation is not None:
+            self.monitor.operations_loading[operation.id] = operation
+        else:
+            operation = job.operations[-1]
+            self.monitor.operations_loading[operation.id] = operation
+
         while location_name is not None:
             job.next_location = location_name
 
@@ -1114,6 +1153,11 @@ class OutputPoint:
         job.current_location = self.name
         job.next_location = None
 
+        operation = job.get_current_operation()
+        if operation is None:
+            operation = job.operations[-1]
+        del self.monitor.operations_unloading[operation.id]
+
         self.processes[job.id] = self.env.process(self._departure(job))
 
     def check_status(self):
@@ -1170,6 +1214,8 @@ class Monitor:
         self.crane_scheduling = False
 
         self.operations_unscheduled = {}
+        self.operations_loading = {}
+        self.operations_unloading = {}
         self.operations_working = {}
         self.operations_waiting = {}
         self.operations_done = {}
