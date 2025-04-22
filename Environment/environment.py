@@ -337,7 +337,8 @@ class Factory:
 
         location_id = self.locations[job.current_location].global_id
         if job.current_location == next_location:
-            mask[self.num_cranes, location_id] = 1
+            # mask[self.num_cranes, location_id] = 1
+            mask[self.num_cranes, job.id] = 1
         else:
             current_location_coord = self.locations[job.current_location].coord
             next_location_coord = self.locations[next_location].coord
