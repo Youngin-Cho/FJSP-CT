@@ -114,26 +114,47 @@ class Factory:
             "output": self.num_outputpoints
         }
 
+        # self.ct_crane_feature_dim = 6
+        # self.ct_location_feature_dim = 8
+        # self.ct_pairwise_feature_dim = 2
+        #
+        # self.ct_meta_data = (
+        #     ["crane", "location"],
+        #     [("crane", "crane_to_crane", "crane"),
+        #      ("location", "location_to_location", "location"),
+        #      ("crane", "crane_to_location", "location"),
+        #      ("location", "location_to_crane", "crane")]
+        # )
+        #
+        # self.ct_state_size = {
+        #     "crane": self.ct_crane_feature_dim,
+        #     "location": self.ct_location_feature_dim
+        # }
+        #
+        # self.ct_num_nodes = {
+        #     "crane": self.num_cranes + 1,
+        #     "location": self.num_locations
+        # }
+
         self.ct_crane_feature_dim = 6
-        self.ct_location_feature_dim = 8
+        self.ct_job_feature_dim = 8
         self.ct_pairwise_feature_dim = 2
 
         self.ct_meta_data = (
-            ["crane", "location"],
+            ["crane", "job"],
             [("crane", "crane_to_crane", "crane"),
-             ("location", "location_to_location", "location"),
-             ("crane", "crane_to_location", "location"),
-             ("location", "location_to_crane", "crane")]
+             ("crane", "crane_to_job", "job"),
+             ("job", "job_to_crane", "crane")]
         )
 
         self.ct_state_size = {
             "crane": self.ct_crane_feature_dim,
-            "location": self.ct_location_feature_dim
+            "job": self.ct_job_feature_dim
         }
 
         self.ct_num_nodes = {
             "crane": self.num_cranes + 1,
-            "location": self.num_locations
+            "job": self.num_jobs
         }
 
         self.state = None
@@ -310,7 +331,8 @@ class Factory:
 
     def _get_cs_mask(self, job, next_location):
         num_rows = self.num_cranes + 1
-        num_columns = self.num_locations
+        # num_columns = self.num_locations
+        num_columns = self.num_jobs
         mask = np.zeros((num_rows, num_columns), dtype=bool)
 
         location_id = self.locations[job.current_location].global_id
@@ -399,7 +421,10 @@ class Factory:
                         flag_not_blocked = False
                         break
 
-                mask[crane.id, location_id] \
+                # mask[crane.id, location_id] \
+                #     = flag_accessibility & flag_not_reversed & flag_not_cycled & flag_not_blocked
+
+                mask[crane.id, job.id] \
                     = flag_accessibility & flag_not_reversed & flag_not_cycled & flag_not_blocked
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
@@ -761,18 +786,30 @@ class Factory:
             crane_scheduling_algorithm = self.algorithm[1]
 
             if crane_scheduling_algorithm == "RL":
+                # crane_feature = np.zeros((self.num_cranes + 1, self.ct_crane_feature_dim))
+                # location_feature = np.zeros((self.num_locations, self.ct_location_feature_dim))
+                # pairwise_feature = np.zeros((self.num_locations,
+                #                              self.num_cranes + 1,
+                #                              self.ct_pairwise_feature_dim))
+
                 crane_feature = np.zeros((self.num_cranes + 1, self.ct_crane_feature_dim))
-                location_feature = np.zeros((self.num_locations, self.ct_location_feature_dim))
-                pairwise_feature = np.zeros((self.num_locations,
+                job_feature = np.zeros((self.num_jobs, self.ct_job_feature_dim))
+                pairwise_feature = np.zeros((self.num_jobs,
                                              self.num_cranes + 1,
                                              self.ct_pairwise_feature_dim))
 
+                # edge_crane_to_crane = [[], []]
+                # # edge_location_to_location = [[], []]
+                # edge_crane_to_location, edge_location_to_crane = [[], []], [[], []]
+
                 edge_crane_to_crane = [[], []]
-                # edge_location_to_location = [[], []]
-                edge_crane_to_location, edge_location_to_crane = [[], []], [[], []]
+                edge_crane_to_job, edge_job_to_crane = [[], []], [[], []]
 
                 # Crane Feature
                 last_visited_time = {name: {"get": [0, 0], "put": [0, 0]} for name in self.locations.keys()}
+                expected_arrival_time = np.zeros(self.num_jobs)
+                crane_allocation = np.full(self.num_jobs, -1)
+                job_in_transportation = np.zeros(self.num_jobs, dtype=bool)
                 for crane in self.resources.values():
                     f1 = crane.current_coord[0] / self.x_max if self.x_max != 0 else 0
                     f2 = crane.current_coord[1] / self.y_max if self.y_max != 0 else 0
@@ -799,20 +836,27 @@ class Factory:
                         remaining_jobs += 1
                     remaining_jobs += len(crane.queue)
 
-                    sequence = []
+                    location_seq = []
+                    job_seq = []
                     tag = []
                     if crane.current_working_order is not None:
                         if crane.to_location == crane.current_working_order[1]:
-                            sequence.append(crane.current_working_order[1])
-                            sequence.append(crane.current_working_order[2])
+                            location_seq.append(crane.current_working_order[1])
+                            location_seq.append(crane.current_working_order[2])
+                            job_seq.append(crane.current_working_order[0])
+                            job_seq.append(crane.current_working_order[0])
                             tag.append("get")
                             tag.append("put")
                         else:
-                            sequence.append(crane.current_working_order[2])
+                            job_in_transportation[crane.current_working_order[0]] = True
+                            location_seq.append(crane.current_working_order[2])
+                            job_seq.append(crane.current_working_order[0])
                             tag.append("put")
                     for working_order in crane.queue:
-                        sequence.append(working_order[1])
-                        sequence.append(working_order[2])
+                        location_seq.append(working_order[1])
+                        location_seq.append(working_order[2])
+                        job_seq.append(working_order[0])
+                        job_seq.append(working_order[0])
                         tag.append("get")
                         tag.append("put")
 
@@ -820,7 +864,7 @@ class Factory:
 
                     remaining_work = 0
                     current_coord = crane.current_coord
-                    for i, location_name in enumerate(sequence):
+                    for i, location_name in enumerate(location_seq):
                         location_coord = self.locations[location_name].coord
 
                         x_travel_time = abs(location_coord[0] - current_coord[0]) / crane.x_velocity
@@ -830,6 +874,10 @@ class Factory:
 
                         if self.sim_env.now + remaining_work > last_visited_time[location_name][tag[i]][crane.id]:
                             last_visited_time[location_name][tag[i]][crane.id] = self.sim_env.now + remaining_work
+
+                        job_id = job_seq[i]
+                        expected_arrival_time[job_id] = remaining_work
+                        crane_allocation[job_id] = crane.id
 
                         current_coord = location_coord
 
@@ -848,36 +896,97 @@ class Factory:
                 crane_feature[:, 5] = crane_feature[:, 5] / np.max(crane_feature[:, 5]) \
                     if np.max(crane_feature[:, 5]) > 0.0 else 0.0
 
-                # Location Feature
-                current_location = self.monitor.queue_for_crane_scheduling.current_location
-                target_location = self.monitor.queue_for_crane_scheduling.next_location
-                for location in self.locations.values():
-                    xcoord, ycoord = location.coord
-                    f1 = xcoord / self.x_max if self.x_max != 0 else 0
-                    f2 = ycoord / self.y_max if self.y_max != 0 else 0
+                # # Location Feature
+                # current_location = self.monitor.queue_for_crane_scheduling.current_location
+                # target_location = self.monitor.queue_for_crane_scheduling.next_location
+                # for location in self.locations.values():
+                #     xcoord, ycoord = location.coord
+                #     f1 = xcoord / self.x_max if self.x_max != 0 else 0
+                #     f2 = ycoord / self.y_max if self.y_max != 0 else 0
+                #
+                #     if location.name == current_location:
+                #         target_coord = self.locations[target_location].coord
+                #         f3 = target_coord[0] / self.x_max if self.x_max != 0 else 0
+                #         f4 = target_coord[1] / self.y_max if self.y_max != 0 else 0
+                #     else:
+                #         f3 = -1
+                #         f4 = -1
+                #
+                #     f5 = last_visited_time[location.name]["get"]
+                #     f6 = last_visited_time[location.name]["put"]
+                #
+                #     location_feature[location.global_id, :4] = [f1, f2, f3, f4]
+                #     location_feature[location.global_id, 4:6] = f5
+                #     location_feature[location.global_id, 6:8] = f6
+                #
+                # denominator = np.max(location_feature[:, 4:])
+                # if denominator != 0:
+                #     location_feature[:, 4:] = location_feature[:, 4:] / denominator
 
-                    if location.name == current_location:
-                        target_coord = self.locations[target_location].coord
-                        f3 = target_coord[0] / self.x_max if self.x_max != 0 else 0
-                        f4 = target_coord[1] / self.y_max if self.y_max != 0 else 0
+                # Job Feature
+                for j in self.df_operations["Job_Index"].unique():
+                    if j in self.monitor.jobs_before_system.keys():
+                        job = self.monitor.jobs_before_system[j]
+                    elif j in self.monitor.jobs_in_system.keys():
+                        job = self.monitor.jobs_in_system[j]
                     else:
-                        f3 = -1
-                        f4 = -1
+                        job = self.monitor.jobs_after_system[j]
 
-                    f5 = last_visited_time[location.name]["get"]
-                    f6 = last_visited_time[location.name]["put"]
+                    operation = job.get_current_operation()
+                    if operation is None:
+                        operation = job.operations[-1]
+                    if operation.id in self.monitor.operations_loading.keys():
+                        f0 = [1, 0, 0]
+                    elif operation.id in self.monitor.operations_unloading.keys():
+                        f0 = [0, 1, 0]
+                        for crane in self.resources.values():
+                            if crane.current_working_order is not None:
+                                if operation.id == crane.current_working_order[0]:
+                                    current_coord = crane.current_coord
+                    else:
+                        f0 = [0, 0, 1]
 
-                    location_feature[location.global_id, :4] = [f1, f2, f3, f4]
-                    location_feature[location.global_id, 4:6] = f5
-                    location_feature[location.global_id, 6:8] = f6
+                    if j in self.monitor.jobs_in_system.keys():
+                        if job_in_transportation[j]:
+                            crane = self.resources[self.resource_id_to_name[crane_allocation[j]]]
+                            current_coord = crane.current_coord
+                            next_coord = self.locations[job.next_location].coord
+                        else:
+                            current_coord = self.locations[job.current_location].coord
+                            if job.next_location is not None:
+                                next_coord = self.locations[job.next_location].coord
+                            else:
+                                next_coord = None
+                    else:
+                        current_coord = None
+                        next_coord = None
 
-                denominator = np.max(location_feature[:, 4:])
-                if denominator != 0:
-                    location_feature[:, 4:] = location_feature[:, 4:] / denominator
+                    if current_coord is not None:
+                        f1 = current_coord[0] / self.x_max if self.x_max != 0 else 0
+                        f2 = current_coord[1] / self.y_max if self.y_max != 0 else 0
+                    else:
+                        f1 = -1.0
+                        f2 = -1.0
+
+                    if next_coord is not None:
+                        f3 = next_coord[0] / self.x_max if self.x_max != 0 else 0
+                        f4 = next_coord[1] / self.y_max if self.y_max != 0 else 0
+                    else:
+                        f3 = -1.0
+                        f4 = -1.0
+
+                    f5 = expected_arrival_time[j]
+
+                    job_feature[job.id, :3] = f0
+                    job_feature[job.id, 3:] = [f1, f2, f3, f4, f5]
+
+                job_feature[:, 7] = job_feature[:, 7] / np.max(job_feature[:, 7]) \
+                    if np.max(job_feature[:, 7]) > 0.0 else 0.0
 
                 # Pairwise Feature
+                job = self.monitor.queue_for_crane_scheduling
                 current_location = self.monitor.queue_for_crane_scheduling.current_location
-                current_location_id = self.locations[current_location].global_id
+                # current_location_id = self.locations[current_location].global_id
                 current_coord = self.locations[current_location].coord
                 for crane in self.resources.values():
                     if len(crane.queue) > 0:
@@ -896,7 +1005,8 @@ class Factory:
                     f1 = (crane_coord[0] - current_coord[0]) / self.x_max if self.x_max != 0 else 0
                     f2 = (crane_coord[1] - current_coord[1]) / self.y_max if self.y_max != 0 else 0
 
-                    pairwise_feature[current_location_id, crane.id, :] = [f1, f2]
+                    # pairwise_feature[current_location_id, crane.id, :] = [f1, f2]
+                    pairwise_feature[job.id, crane.id, :] = [f1, f2]
 
                 # Edge Construction
                 for crane_1 in self.resources.values():
@@ -921,42 +1031,73 @@ class Factory:
                 #         edge_location_to_location[0].append(current_location.global_id)
                 #         edge_location_to_location[1].append(next_location.global_id)
 
-                for crane in self.resources.values():
-                    for location in self.locations.values():
-                        if location.category == 3:
-                            continue
-                        else:
-                            edge_crane_to_location[0].append(crane.id)
-                            edge_crane_to_location[1].append(location.global_id)
+                # for crane in self.resources.values():
+                #     for location in self.locations.values():
+                #         if location.category == 3:
+                #             continue
+                #         else:
+                #             edge_crane_to_location[0].append(crane.id)
+                #             edge_crane_to_location[1].append(location.global_id)
+                #
+                #             edge_location_to_crane[0].append(location.global_id)
+                #             edge_location_to_crane[1].append(crane.id)
+                #
+                # for location in self.locations.values():
+                #     if location.category == 3:
+                #         continue
+                #     else:
+                #         edge_crane_to_location[0].append(self.num_cranes)
+                #         edge_crane_to_location[1].append(location.global_id)
+                #
+                #         edge_location_to_crane[0].append(location.global_id)
+                #         edge_location_to_crane[1].append(self.num_cranes)
 
-                            edge_location_to_crane[0].append(location.global_id)
-                            edge_location_to_crane[1].append(crane.id)
+                for j in self.df_operations["Job_Index"].unique():
+                    crane_id = crane_allocation[j]
+                    if crane_id != -1:
+                        edge_crane_to_job[0].append(crane_id)
+                        edge_crane_to_job[1].append(j)
 
-                for location in self.locations.values():
-                    if location.category == 3:
-                        continue
-                    else:
-                        edge_crane_to_location[0].append(self.num_cranes)
-                        edge_crane_to_location[1].append(location.global_id)
+                        edge_job_to_crane[0].append(j)
+                        edge_job_to_crane[1].append(crane_id)
 
-                        edge_location_to_crane[0].append(location.global_id)
-                        edge_location_to_crane[1].append(self.num_cranes)
+                job = self.monitor.queue_for_crane_scheduling
+                for crane_id in range(self.num_cranes + 1):
+                    edge_crane_to_job[0].append(crane_id)
+                    edge_crane_to_job[1].append(job.id)
+
+                    edge_job_to_crane[0].append(job.id)
+                    edge_job_to_crane[1].append(crane_id)
+
+                # crane_feature = torch.from_numpy(crane_feature).type(torch.float32).to(self.device)
+                # location_feature = torch.from_numpy(location_feature).type(torch.float32).to(self.device)
+                #
+                # edge_crane_to_crane = torch.from_numpy(np.array(edge_crane_to_crane)).type(torch.long).to(self.device)
+                # # edge_location_to_location = torch.from_numpy(np.array(edge_location_to_location)).type(torch.long).to(self.device)
+                # edge_crane_to_location = torch.from_numpy(np.array(edge_crane_to_location)).type(torch.long).to(self.device)
+                # edge_location_to_crane = torch.from_numpy(np.array(edge_location_to_crane)).type(torch.long).to(self.device)
+                #
+                # graph_feature = HeteroData()
+                # graph_feature["crane"].x = crane_feature
+                # graph_feature["location"].x = location_feature
+                # graph_feature["crane", "crane_to_crane", "crane"].edge_index = edge_crane_to_crane
+                # # graph_feature["location", "location_to_location", "location"].edge_index = edge_location_to_location
+                # graph_feature["crane", "crane_to_location", "location"].edge_index = edge_crane_to_location
+                # graph_feature["location", "location_to_crane", "crane"].edge_index = edge_location_to_crane
 
                 crane_feature = torch.from_numpy(crane_feature).type(torch.float32).to(self.device)
-                location_feature = torch.from_numpy(location_feature).type(torch.float32).to(self.device)
+                job_feature = torch.from_numpy(job_feature).type(torch.float32).to(self.device)
 
                 edge_crane_to_crane = torch.from_numpy(np.array(edge_crane_to_crane)).type(torch.long).to(self.device)
-                # edge_location_to_location = torch.from_numpy(np.array(edge_location_to_location)).type(torch.long).to(self.device)
-                edge_crane_to_location = torch.from_numpy(np.array(edge_crane_to_location)).type(torch.long).to(self.device)
-                edge_location_to_crane = torch.from_numpy(np.array(edge_location_to_crane)).type(torch.long).to(self.device)
+                edge_crane_to_job = torch.from_numpy(np.array(edge_crane_to_job)).type(torch.long).to(self.device)
+                edge_job_to_crane = torch.from_numpy(np.array(edge_job_to_crane)).type(torch.long).to(self.device)
 
                 graph_feature = HeteroData()
                 graph_feature["crane"].x = crane_feature
-                graph_feature["location"].x = location_feature
+                graph_feature["job"].x = job_feature
                 graph_feature["crane", "crane_to_crane", "crane"].edge_index = edge_crane_to_crane
-                # graph_feature["location", "location_to_location", "location"].edge_index = edge_location_to_location
-                graph_feature["crane", "crane_to_location", "location"].edge_index = edge_crane_to_location
-                graph_feature["location", "location_to_crane", "crane"].edge_index = edge_location_to_crane
+                graph_feature["crane", "crane_to_job", "job"].edge_index = edge_crane_to_job
+                graph_feature["job", "job_to_crane", "crane"].edge_index = edge_job_to_crane
 
                 pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
 
