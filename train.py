@@ -22,8 +22,9 @@ def get_config():
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
 
-    parser.add_argument("--load_model", type=int, default=0, help="whether to load the trained model (0: False, 1:True)")
-    parser.add_argument("--model_path", type=str, default=None, help="model file path")
+    parser.add_argument("--no_pretraining", action='store_true', help="Disable model loading")
+    parser.add_argument("--fjsp_model_path", type=str, default=None, help="fjsp model file path")
+    parser.add_argument("--ct_model_path", type=str, default=None, help="ct model file path")
 
     parser.add_argument("--fjsp_algorithm", type=str, default=None, help="fjsp agent")
     parser.add_argument("--ct_algorithm", type=str, default=None, help="ct agent")
@@ -61,6 +62,7 @@ def train(config):
 
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_vessl = False if config.no_vessl else True
+    use_saved_model = False if config.no_pretraining else True
     use_recording = False if config.no_record else True
 
     if use_cuda:
@@ -72,8 +74,8 @@ def train(config):
         import vessl
         vessl.init(organization="snu-eng-dgx", project="fjsp-ct", hp=config)
 
-    load_model = config.load_model
-    model_path = config.model_path
+    fjsp_model_path = config.fjsp_model_path
+    ct_model_path = config.ct_model_path
 
     fjsp_algorithm = config.fjsp_algorithm
     ct_algorithm = config.ct_algorithm
@@ -201,25 +203,22 @@ def train(config):
     if not use_vessl:
         writer = SummaryWriter(log_dir)
 
-    if bool(load_model):
-        checkpoint = torch.load(model_path)
-        start_episode = checkpoint['episode'] + 1
-
+    if use_saved_model:
         if fjsp_algorithm == "RL":
+            checkpoint = torch.load(fjsp_model_path)
             fjsp_agent.network.load_state_dict(checkpoint['model_state_dict'])
             fjsp_agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if ct_algorithm == "RL":
+            checkpoint = torch.load(ct_model_path)
             ct_agent.network.load_state_dict(checkpoint['model_state_dict'])
             ct_agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    else:
-        start_episode = 1
 
     with open(log_dir + "train_log.csv", 'w') as f:
         f.write('episode, reward, loss, lr\n')
     with open(log_dir + "validation_log.csv", 'w') as f:
         f.write('episode, makespan\n')
 
-    for e in range(start_episode, num_episodes + 1):
+    for e in range(1, num_episodes + 1):
         if use_vessl:
             if fjsp_algorithm == "RL":
                 vessl.log(payload={"Train/LearnigRate": fjsp_agent.scheduler.get_last_lr()[0]}, step=e)
@@ -321,7 +320,7 @@ def train(config):
         if ct_algorithm == "RL":
             ct_agent.scheduler.step()
 
-        if e == start_episode or e % eval_every == 0:
+        if e == 1 or e % eval_every == 0:
             average_makespan = evaluate(fjsp_agent, ct_agent, val_dir)
 
             with open(log_dir + "validation_log.csv", 'a') as f:
@@ -357,15 +356,15 @@ if __name__ == "__main__":
 
     elif (config.fjsp_algorithm is not None) and (config.ct_algorithm is None):
         assert config.fjsp_algorithm == "RL"
-        train_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"), ("RL", "RAND")]
+        train_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT")]
 
     elif (config.fjsp_algorithm is None) and (config.ct_algorithm is not None):
         assert config.ct_algorithm == "RL"
-        train_case = [("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL"), ("RAND", "RL")]
+        train_case = [("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL")]
 
     else:
-        train_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"), ("RL", "RAND"),
-                      ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL"), ("RAND", "RL")]
+        train_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"),
+                      ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL")]
 
     for fjsp_algorithm, ct_algorithm in train_case:
         config.fjsp_algorithm = fjsp_algorithm

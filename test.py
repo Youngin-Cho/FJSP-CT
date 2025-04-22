@@ -177,18 +177,16 @@ if __name__ == "__main__":
     elif (config.fjsp_algorithm is not None) and (config.ct_algorithm is None):
         test_case = [(config.fjsp_algorithm, "SETT"),
                      (config.fjsp_algorithm, "TDD"),
-                     (config.fjsp_algorithm, "TDT"),
-                     (config.fjsp_algorithm, "RAND")]
+                     (config.fjsp_algorithm, "TDT")]
 
     elif (config.fjsp_algorithm is None) and (config.ct_algorithm is not None):
         test_case = [("SPT", config.ct_algorithm),
                      ("MOR", config.ct_algorithm),
-                     ("MWKR", config.ct_algorithm),
-                     ("RAND", config.ct_algorithm)]
+                     ("MWKR", config.ct_algorithm)]
 
     else:
-        test_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"), ("RL", "RAND"),
-                     ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL"), ("RAND", "RL")]
+        test_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"),
+                     ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL")]
 
     config.data_dir = "./input/test/%d-%d/" % (config.num_jobs, config.num_machines)
     config.res_dir = "./output/test/%d-%d/" % (config.num_jobs, config.num_machines)
