@@ -122,23 +122,39 @@ class Crane:
                     flag_update = True
                     x_direction = np.sign(self.target_coord[0] - xcoord)
                     y_direction = np.sign(self.target_coord[1] - ycoord)
+
+                    x_limit = self.target_coord[0]
+                    y_limit = self.target_coord[1]
             else:
                 if not self.waiting:
                     if self.safety_coord[0] != -1.0:
                         flag_update = True
                         x_direction = np.sign(self.safety_coord[0] - xcoord)
                         y_direction = np.sign(self.target_coord[1] - ycoord)
+
+                        x_limit = self.safety_coord[0]
+                        y_limit = self.safety_coord[1]
                     else:
                         flag_update = True
                         x_direction = np.sign(self.target_coord[0] - xcoord)
                         y_direction = np.sign(self.target_coord[1] - ycoord)
 
+                        x_limit = self.target_coord[0]
+                        y_limit = self.target_coord[1]
+
             if flag_update:
                 xcoord = xcoord + time_elapsed * self.x_velocity * x_direction
                 ycoord = ycoord + time_elapsed * self.y_velocity * y_direction
 
-        xcoord = np.clip(xcoord, a_min=self.x_min, a_max=self.x_max)
-        ycoord = np.clip(ycoord, a_min=self.y_min, a_max=self.y_max)
+                if x_direction == 1:
+                    xcoord = np.clip(xcoord, a_min=self.x_min, a_max=x_limit)
+                else:
+                    xcoord = np.clip(xcoord, a_min=x_limit, a_max=self.x_max)
+
+                if y_direction == 1:
+                    ycoord = np.clip(ycoord, a_min=self.y_min, a_max=y_limit)
+                else:
+                    ycoord = np.clip(ycoord, a_min=y_limit, a_max=self.y_max)
 
         self.update_time = time
         self.current_coord = (xcoord, ycoord)
