@@ -188,6 +188,10 @@ if __name__ == "__main__":
         test_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"),
                      ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL")]
 
+        # test_case = [("SPT", "SETT"), ("SPT", "TDD"), ("SPT", "TDT"),
+        #              ("MOR", "SETT"), ("MOR", "TDD"), ("MOR", "TDT"),
+        #              ("MWKR", "SETT"), ("MWKR", "TDD"), ("MWKR", "TDT")]
+
     config.data_dir = "./input/test/%d-%d/" % (config.num_jobs, config.num_machines)
     config.res_dir = "./output/test/%d-%d/" % (config.num_jobs, config.num_machines)
 

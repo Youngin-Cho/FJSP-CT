@@ -60,15 +60,18 @@ class CTScheduler(nn.Module):
 
         h_cranes = x_dict["crane"]
         # h_locations = x_dict["location"]
-        h_jobs = x_dict["job"]
+        # h_jobs = x_dict["job"]
+        h_operations = x_dict["operation"]
 
         h_cranes_pooled = h_cranes.mean(dim=-2)
         # h_locations_pooled = h_locations.mean(dim=-2)
-        h_jobs_pooled = h_jobs.mean(dim=-2)
+        # h_jobs_pooled = h_jobs.mean(dim=-2)
+        h_operations_pooled = h_operations.mean(dim=-2)
 
         # h_locations_padding = h_locations.unsqueeze(-2).expand(-1, self.num_cranes, -1)
-        h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, self.num_cranes, -1)
-        h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_jobs_padding)
+        # h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, self.num_cranes, -1)
+        h_operations_padding = h_operations.unsqueeze(-2).expand(-1, self.num_cranes, -1)
+        h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_padding)
 
         # h_machines_pooled_padding = h_machines_pooled[None, None, :].expand_as(h_machines_padding)
         # h_jobs_pooled_padding = h_jobs_pooled[None, None, :].expand_as(h_jobs_padding)
@@ -80,8 +83,10 @@ class CTScheduler(nn.Module):
 
         # h_actions = torch.cat((h_cranes_padding, h_locations_padding, h_added), dim=-1)
         # h_pooled = torch.cat((h_cranes_pooled, h_locations_pooled), dim=-1)
-        h_actions = torch.cat((h_cranes_padding, h_jobs_padding, h_added), dim=-1)
-        h_pooled = torch.cat((h_cranes_pooled, h_jobs_pooled), dim=-1)
+        # h_actions = torch.cat((h_cranes_padding, h_jobs_padding, h_added), dim=-1)
+        # h_pooled = torch.cat((h_cranes_pooled, h_jobs_pooled), dim=-1)
+        h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
+        h_pooled = torch.cat((h_cranes_pooled, h_operations_pooled), dim=-1)
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:
@@ -125,15 +130,18 @@ class CTScheduler(nn.Module):
 
         h_cranes = x_dict["crane"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
         # h_locations = x_dict["location"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
-        h_jobs = x_dict["job"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
+        # h_jobs = x_dict["job"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
+        h_operations = x_dict["operation"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
 
         h_cranes_pooled = h_cranes.mean(dim=-2)
         # h_locations_pooled = h_locations.mean(dim=-2)
-        h_jobs_pooled = h_jobs.mean(dim=-2)
+        # h_jobs_pooled = h_jobs.mean(dim=-2)
+        h_operations_pooled = h_operations.mean(dim=-2)
 
         # h_locations_padding = h_locations.unsqueeze(-2).expand(-1, -1, self.num_cranes, -1)
-        h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, -1, self.num_cranes, -1)
-        h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_jobs_padding)
+        # h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, -1, self.num_cranes, -1)
+        h_operations_padding = h_operations.unsqueeze(-2).expand(-1, -1, self.num_cranes, -1)
+        h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_padding)
 
         # h_machines_pooled_padding = h_machines_pooled[:, None, None, :].expand_as(h_machines_padding)
         # h_jobs_pooled_padding = h_jobs_pooled[:, None, None, :].expand_as(h_jobs_padding)
@@ -145,8 +153,10 @@ class CTScheduler(nn.Module):
 
         # h_actions = torch.cat((h_cranes_padding, h_locations_padding, h_added), dim=-1)
         # h_pooled = torch.cat((h_cranes_pooled, h_locations_pooled), dim=-1)
-        h_actions = torch.cat((h_cranes_padding, h_jobs_padding, h_added), dim=-1)
-        h_pooled = torch.cat((h_cranes_pooled, h_jobs_pooled), dim=-1)
+        # h_actions = torch.cat((h_cranes_padding, h_jobs_padding, h_added), dim=-1)
+        # h_pooled = torch.cat((h_cranes_pooled, h_jobs_pooled), dim=-1)
+        h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
+        h_pooled = torch.cat((h_cranes_pooled, h_operations_pooled), dim=-1)
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:

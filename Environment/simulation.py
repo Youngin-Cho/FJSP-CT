@@ -653,6 +653,7 @@ class Operation:
         self.start_time = None
         self.finish_time = None
         self.allocated_machine = None
+        self.allocated_crane = None
 
     def get_processing_time(self, machine_id):
         return self.options[machine_id]
