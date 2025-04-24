@@ -1103,7 +1103,8 @@ class Factory:
                 pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
 
             else:
-                num_rows = self.num_locations
+                # num_rows = self.num_locations
+                num_rows = self.num_jobs
                 num_columns = self.num_cranes + 1
 
                 priority_idx = np.zeros((num_rows, num_columns))
@@ -1112,7 +1113,8 @@ class Factory:
                 location_id = self.locations[job.current_location].global_id
                 location_coord = self.locations[job.current_location].coord
 
-                priority_idx[location_id, self.num_cranes] = 1.0
+                # priority_idx[location_id, self.num_cranes] = 1.0
+                priority_idx[job.id, self.num_cranes] = 1.0
 
                 if crane_scheduling_algorithm == "SETT":
                     for crane in self.resources.values():
@@ -1128,33 +1130,42 @@ class Factory:
                         y_travel_time = abs(location_coord[1] - crane_coord[1]) / crane.y_velocity
                         empty_travel_time = max(x_travel_time, y_travel_time)
 
-                        priority_idx[location_id, crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1.0
+                        # priority_idx[location_id, crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1.0
+                        priority_idx[job.id, crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1.0
 
                 elif crane_scheduling_algorithm == "TDD":
                     for crane in self.resources.values():
                         if crane.id == 0:
                             if self.locations[job.current_location].coord[0] <= self.x_max / 2:
-                                priority_idx[location_id, crane.id] = 1.0
+                                # priority_idx[location_id, crane.id] = 1.0
+                                priority_idx[job.id, crane.id] = 1.0
                             else:
-                                priority_idx[location_id, crane.id] = 0.5
+                                # priority_idx[location_id, crane.id] = 0.5
+                                priority_idx[job.id, crane.id] = 0.5
                         else:
                             if self.locations[job.current_location].coord[0] >= self.x_max / 2:
-                                priority_idx[location_id, crane.id] = 1.0
+                                # priority_idx[location_id, crane.id] = 1.0
+                                priority_idx[job.id, crane.id] = 1.0
                             else:
-                                priority_idx[location_id, crane.id] = 0.5
+                                # priority_idx[location_id, crane.id] = 0.5
+                                priority_idx[job.id, crane.id] = 0.5
 
                 elif crane_scheduling_algorithm == "TDT":
                     for crane in self.resources.values():
                         if crane.id == 0:
                             if self.locations[job.next_location].coord[0] <= self.x_max / 2:
-                                priority_idx[location_id, crane.id] = 1.0
+                                # priority_idx[location_id, crane.id] = 1.0
+                                priority_idx[job.id, crane.id] = 1.0
                             else:
-                                priority_idx[location_id, crane.id] = 0.5
+                                # priority_idx[location_id, crane.id] = 0.5
+                                priority_idx[job.id, crane.id] = 0.5
                         else:
                             if self.locations[job.next_location].coord[0] >= self.x_max / 2:
-                                priority_idx[location_id, crane.id] = 1.0
+                                # priority_idx[location_id, crane.id] = 1.0
+                                priority_idx[job.id, crane.id] = 1.0
                             else:
-                                priority_idx[location_id, crane.id] = 0.5
+                                # priority_idx[location_id, crane.id] = 0.5
+                                priority_idx[job.id, crane.id] = 0.5
 
                 # elif crane_scheduling_algorithm == "LOR":
                 #     for crane in self.resources.values():
@@ -1193,7 +1204,8 @@ class Factory:
                 #         priority_idx[location_id, crane.id] = 1 / remaining_work if remaining_work > 0 else 1.0
 
                 elif crane_scheduling_algorithm == "RAND":
-                    priority_idx[location_id, :] = 1.0
+                    # priority_idx[location_id, :] = 1.0
+                    priority_idx[job.id, :] = 1.0
 
         if self.scheduling_mode == "machine":
             state = State(self.algorithm[0])
