@@ -98,7 +98,9 @@ class Crane:
         queue_from_opposite = set([temp[1] for temp in self.opposite.queue if self.locations[temp[1]].category == 1])
         self.blocked_expected = len(set.intersection(queue_to, queue_from_opposite)) > 0
 
-        if (self.opposite.status == "unloading") and (self.opposite.to_location in [temp[1] for temp in self.queue]):
+        if ((self.opposite.status == "unloading")
+                and (self.opposite.to_location in [temp[1] for temp in self.queue
+                                                   if self.locations[temp[1]].category == 1])):
             self.opposite.moving_process.interrupt()
 
     def set_opposite_crane(self, crane):
@@ -464,7 +466,6 @@ class Crane:
 
             except simpy.Interrupt as i:
                 if self.waiting:
-                    self.waiting = False
                     if self.monitor.use_recording:
                         self.monitor.record(self.env.now,
                                             event="Avoiding_wait_finish",
@@ -479,6 +480,8 @@ class Crane:
 
                 self.opposite.update_location(self.env.now)
                 self.update_location(self.env.now)
+
+                self.waiting = False
 
                 if self.monitor.use_recording:
                     self.monitor.record(self.env.now,
