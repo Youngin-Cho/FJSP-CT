@@ -1049,10 +1049,6 @@ class Factory:
                         current_operations[job.id] = job.operations[-1].id
 
                     for k, operation in enumerate(job.operations):
-                        eligible_options = ((operation.options[operation.options != 0] - self.proctime_min)
-                                            / (self.proctime_max - self.proctime_min))
-
-                        # Operation Feature
                         if operation.id in self.monitor.operations_loading.keys():
                             f0 = [1, 0, 0]
                         elif operation.id in self.monitor.operations_unloading.keys():
@@ -1204,6 +1200,7 @@ class Factory:
                                     edge_crane_to_operation[0].append(i)
                                     edge_crane_to_operation[1].append(operation.id)
                             else:
+                                # pass
                                 crane_name = operation.allocated_crane
                                 if crane_name is None:
                                     edge_operation_to_crane[0].append(operation.id)
@@ -1239,6 +1236,7 @@ class Factory:
                                     edge_crane_to_operation[0].append(i)
                                     edge_crane_to_operation[1].append(operation.id)
                         else:
+                            # pass
                             for i in range(self.num_cranes + 1):
                                 edge_operation_to_crane[0].append(operation.id)
                                 edge_operation_to_crane[1].append(i)
