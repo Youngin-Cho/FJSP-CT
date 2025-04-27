@@ -1200,19 +1200,19 @@ class Factory:
                                     edge_crane_to_operation[0].append(i)
                                     edge_crane_to_operation[1].append(operation.id)
                             else:
-                                # pass
-                                crane_name = operation.allocated_crane
-                                if crane_name is None:
-                                    edge_operation_to_crane[0].append(operation.id)
-                                    edge_operation_to_crane[1].append(self.num_cranes)
-                                    edge_crane_to_operation[0].append(self.num_cranes)
-                                    edge_crane_to_operation[1].append(operation.id)
-                                else:
-                                    crane = self.resources[crane_name]
-                                    edge_operation_to_crane[0].append(operation.id)
-                                    edge_operation_to_crane[1].append(crane.id)
-                                    edge_crane_to_operation[0].append(crane.id)
-                                    edge_crane_to_operation[1].append(operation.id)
+                                pass
+                                # crane_name = operation.allocated_crane
+                                # if crane_name is None:
+                                #     edge_operation_to_crane[0].append(operation.id)
+                                #     edge_operation_to_crane[1].append(self.num_cranes)
+                                #     edge_crane_to_operation[0].append(self.num_cranes)
+                                #     edge_crane_to_operation[1].append(operation.id)
+                                # else:
+                                #     crane = self.resources[crane_name]
+                                #     edge_operation_to_crane[0].append(operation.id)
+                                #     edge_operation_to_crane[1].append(crane.id)
+                                #     edge_crane_to_operation[0].append(crane.id)
+                                #     edge_crane_to_operation[1].append(operation.id)
                         elif k == job.step:
                             if (((operation.id in self.monitor.operations_loading
                                     or operation.id in self.monitor.operations_unloading))
@@ -1236,12 +1236,12 @@ class Factory:
                                     edge_crane_to_operation[0].append(i)
                                     edge_crane_to_operation[1].append(operation.id)
                         else:
-                            # pass
-                            for i in range(self.num_cranes + 1):
-                                edge_operation_to_crane[0].append(operation.id)
-                                edge_operation_to_crane[1].append(i)
-                                edge_crane_to_operation[0].append(i)
-                                edge_crane_to_operation[1].append(operation.id)
+                            pass
+                            # for i in range(self.num_cranes + 1):
+                            #     edge_operation_to_crane[0].append(operation.id)
+                            #     edge_operation_to_crane[1].append(i)
+                            #     edge_crane_to_operation[0].append(i)
+                            #     edge_crane_to_operation[1].append(operation.id)
 
                 # crane_feature = torch.from_numpy(crane_feature).type(torch.float32).to(self.device)
                 # location_feature = torch.from_numpy(location_feature).type(torch.float32).to(self.device)
