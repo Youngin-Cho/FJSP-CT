@@ -3,16 +3,15 @@ import json
 import torch
 import argparse
 
-from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
-from Environment.environment import Factory
-from Environment.data import DataGenerator
-from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
-from Agent.CraneTransportation.heuristic import CTHeuristic
-from Agent.FlexibleJobShop.ppo import FJSPAgent
-from Agent.CraneTransportation.ppo import CTAgent
-from validate import evaluate
+from ..Environment.environment import Factory
+from ..Environment.data import DataGenerator
+from ..Agent.FlexibleJobShop.heuristic import FJSPHeuristic
+from ..Agent.CraneTransportation.heuristic import CTHeuristic
+from ..Agent.FlexibleJobShop.ppo import FJSPAgent
+from ..Agent.CraneTransportation.ppo import CTAgent
+from SARL.validate import evaluate
 
 
 def get_config():
@@ -58,8 +57,6 @@ def get_config():
 
 
 def train(config):
-    # date = datetime.now().strftime('%m%d_%H_%M')
-
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_vessl = False if config.no_vessl else True
     use_saved_model = False if config.no_pretraining else True
@@ -110,22 +107,13 @@ def train(config):
     with open(val_dir + "setting.json", 'r') as f:
         setting = json.load(f)
 
-    training_target = []
     if config.fjsp_algorithm == "RL":
-        training_target.append("fjsp")
+        name = (setting["num_jobs"], setting["num_machines"], "FJSP", config.fjsp_algorithm, config.ct_algorithm)
     if config.ct_algorithm == "RL":
-        training_target.append("ct")
+        name = (setting["num_jobs"], setting["num_machines"], "CT", config.fjsp_algorithm, config.ct_algorithm)
 
-    if use_vessl:
-        for target in training_target:
-            name = (setting["num_jobs"], setting["num_machines"], target, config.fjsp_algorithm, config.ct_algorithm)
-            model_dir = './output/train/model/%d-%d/%s-%s/%s/' % name
-            log_dir = './output/train/log/%d-%d/%s-%s/%s/' % name
-    else:
-        for target in training_target:
-            name = (setting["num_jobs"], setting["num_machines"], target, config.fjsp_algorithm, config.ct_algorithm)
-            model_dir = './output/train/model/%d-%d/%s-%s/%s/' % name
-            log_dir = './output/train/log/%d-%d/%s-%s/%s/' % name
+    model_dir = './output/train/model/%d-%d/%s/%s-%s/' % name
+    log_dir = './output/train/log/%d-%d/%s/%s-%s/' % name
 
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
@@ -133,9 +121,8 @@ def train(config):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    for target in training_target:
-        with open(log_dir + "parameters.json", 'w') as f:
-            json.dump(vars(config), f, indent=4)
+    with open(log_dir + "parameters.json", 'w') as f:
+        json.dump(vars(config), f, indent=4)
 
     data_src = DataGenerator(num_inputs=setting["num_inputs"],
                              num_outputs=setting["num_outputs"],
@@ -312,10 +299,10 @@ def train(config):
         with open(log_dir + "train_log.csv", 'a') as f:
             if fjsp_algorithm == "RL":
                 f.write('%d, %1.4f, %1.4f, %f\n'
-                        % (e, episode_reward, episode_average_loss, fjsp_agent.scheduler.get_last_lr()[0]))
+                        % (e, episode_reward, episode_average_loss / step, fjsp_agent.scheduler.get_last_lr()[0]))
             if ct_algorithm == "RL":
                 f.write('%d, %1.4f, %1.4f, %f\n'
-                        % (e, episode_reward, episode_average_loss, ct_agent.scheduler.get_last_lr()[0]))
+                        % (e, episode_reward, episode_average_loss / step, ct_agent.scheduler.get_last_lr()[0]))
 
         if use_vessl:
             vessl.log(payload={"Train/Reward": episode_reward,
