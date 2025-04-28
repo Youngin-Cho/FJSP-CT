@@ -35,15 +35,15 @@ def get_config():
     parser.add_argument("--num_actor_layers", type=int, default=2, help="number of actor layers")
     parser.add_argument("--num_critic_layers", type=int, default=2, help="number of critic layers")
 
-    parser.add_argument("--num_episodes", type=int, default=5000, help="number of episodes")
-    parser.add_argument("--lr", type=float, default=0.00001, help="learning rate")
+    parser.add_argument("--num_episodes", type=int, default=2000, help="number of episodes")
+    parser.add_argument("--lr", type=float, default=0.0001, help="learning rate")
     parser.add_argument("--lr_decay", type=float, default=1.0, help="learning rate decay ratio")
     parser.add_argument("--lr_step", type=int, default=100, help="step size to reduce learning rate")
     parser.add_argument("--gamma", type=float, default=0.98, help="discount ratio")
     parser.add_argument("--lmbda", type=float, default=0.95, help="GAE parameter")
-    parser.add_argument("--eps_clip", type=float, default=0.2, help="clipping parameter")
-    parser.add_argument("--K_epoch", type=int, default=3, help="optimization epoch")
-    parser.add_argument("--T_horizon", type=int, default=5, help="the number of steps to obtain samples")
+    parser.add_argument("--eps_clip", type=float, default=0.1, help="clipping parameter")
+    parser.add_argument("--K_epoch", type=int, default=5, help="optimization epoch")
+    parser.add_argument("--T_horizon", type=int, default=20, help="the number of steps to obtain samples")
     parser.add_argument("--P_coeff", type=float, default=1, help="coefficient for policy loss")
     parser.add_argument("--V_coeff", type=float, default=0.5, help="coefficient for value loss")
     parser.add_argument("--E_coeff", type=float, default=0.01, help="coefficient for entropy loss")
@@ -110,13 +110,22 @@ def train(config):
     with open(val_dir + "setting.json", 'r') as f:
         setting = json.load(f)
 
-    name = (setting["num_jobs"], setting["num_machines"], config.fjsp_algorithm, config.ct_algorithm)
+    training_target = []
+    if config.fjsp_algorithm == "RL":
+        training_target.append("fjsp")
+    if config.ct_algorithm == "RL":
+        training_target.append("ct")
+
     if use_vessl:
-        model_dir = './output/train/model/%d-%d/%s-%s/' % name
-        log_dir = './output/train/log/%d-%d/%s-%s/' % name
+        for target in training_target:
+            name = (setting["num_jobs"], setting["num_machines"], target, config.fjsp_algorithm, config.ct_algorithm)
+            model_dir = './output/train/model/%d-%d/%s-%s/%s/' % name
+            log_dir = './output/train/log/%d-%d/%s-%s/%s/' % name
     else:
-        model_dir = './output/train/model/%d-%d/%s-%s/' % name
-        log_dir = './output/train/log/%d-%d/%s-%s/' % name
+        for target in training_target:
+            name = (setting["num_jobs"], setting["num_machines"], target, config.fjsp_algorithm, config.ct_algorithm)
+            model_dir = './output/train/model/%d-%d/%s-%s/%s/' % name
+            log_dir = './output/train/log/%d-%d/%s-%s/%s/' % name
 
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
@@ -124,8 +133,9 @@ def train(config):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    with open(log_dir + "parameters.json", 'w') as f:
-        json.dump(vars(config), f, indent=4)
+    for target in training_target:
+        with open(log_dir + "parameters.json", 'w') as f:
+            json.dump(vars(config), f, indent=4)
 
     data_src = DataGenerator(num_inputs=setting["num_inputs"],
                              num_outputs=setting["num_outputs"],

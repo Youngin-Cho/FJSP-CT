@@ -227,6 +227,10 @@ if __name__ == "__main__":
                          % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
             model_dir = ("./output/train/model/%d-%d/%s-%s/"
                          % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+            # param_dir = ("./output/train_value/log/10-5/%s-%s/"
+            #              % (fjsp_algorithm, ct_algorithm))
+            # model_dir = ("./output/train_value/model/10-5/%s-%s/"
+            #              % (fjsp_algorithm, ct_algorithm))
 
             episode = max(
                 int(os.path.splitext(filename)[0].split("-")[1])
