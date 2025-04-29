@@ -263,6 +263,9 @@ class Factory:
                 # self.monitor.get_logs("./temp.xlsx")
                 break
 
+            if len(self.sim_env._queue) == 0:
+                self.monitor.get_logs("./temp.xlsx")
+                print(0)
             self.sim_env.step()
 
         self._update_completion_time()
@@ -312,6 +315,9 @@ class Factory:
         mask_buffer = np.zeros((num_rows, num_columns), dtype=bool)
         mask_output = np.zeros((num_rows, num_columns), dtype=bool)
 
+        mask_machine_relaxed = np.zeros((num_rows, num_columns), dtype=bool)
+        mask_buffer_relaxed = np.zeros((num_rows, num_columns), dtype=bool)
+
         for job in self.monitor.queue_for_machine_scheduling.values():
             if job.in_transportation:
                 continue
@@ -338,9 +344,13 @@ class Factory:
                     if category == 1:
                         if operation is not None:
                             flag_eligibility = int(operation.get_processing_time(local_id)) != 0
+
                             mask_machine[self.decision_id[global_id], job.id] \
                                 = (flag_eligibility & flag_availability
                                    & flag_accessibility & flag_crane_availability)
+
+                            mask_machine_relaxed[self.decision_id[global_id], job.id] \
+                                = (flag_eligibility & flag_availability)
                         else:
                             continue
                     elif category == 2:
@@ -350,8 +360,13 @@ class Factory:
                             if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
                                 mask_buffer[self.decision_id[global_id], job.id] \
                                     = flag_availability & flag_accessibility
+                                mask_buffer_relaxed[self.decision_id[global_id], job.id] \
+                                    = flag_availability & flag_accessibility
                             else:
-                                continue
+                                # 동일한 Buffer로 이동 방지
+                                if job.current_location != name:
+                                    mask_buffer_relaxed[self.decision_id[global_id], job.id] \
+                                        = flag_availability & flag_accessibility
                     elif category == 3:
                         if operation is None:
                             mask_output[self.decision_id[global_id], job.id] \
@@ -360,6 +375,12 @@ class Factory:
                             continue
                     else:
                         continue
+
+        # 가용 가능한 Machine이 있지만, accessibility 제약에 의해 가지 못 하는 경우 고려
+        # 해당 Machine으로 이동하기 전에 다른 Buffer로 이동
+        if ((~mask_machine) & mask_machine_relaxed).any():
+            rows, cols = np.where((~mask_machine) & mask_machine_relaxed)
+            mask_buffer[:, cols] = mask_buffer_relaxed[:, cols]
 
         if (mask_machine | mask_output).any():
             mask = mask_machine | mask_output
