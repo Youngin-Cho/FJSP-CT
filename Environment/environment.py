@@ -83,8 +83,8 @@ class Factory:
         for i, row in self.df_resources.iterrows():
             self.resource_id_to_name[int(row["Index"])] = row["Name"]
 
-        self.decision_id = np.arange(self.num_bays)
-        mask = np.ones(self.num_bays, dtype=bool)
+        self.decision_id = np.arange(int(self.num_bays * self.num_rows))
+        mask = np.ones(int(self.num_bays * self.num_rows), dtype=bool)
         for i, row in self.df_locations.iterrows():
             if row["Category"] == 0:
                 self.decision_id[int(row["Global_Index"]):] -= 1
@@ -262,10 +262,7 @@ class Factory:
                 done = True
                 # self.monitor.get_logs("./temp.xlsx")
                 break
-
-            if len(self.sim_env._queue) == 0:
-                self.monitor.get_logs("./temp.xlsx")
-                print(0)
+            
             self.sim_env.step()
 
         self._update_completion_time()
