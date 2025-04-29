@@ -84,9 +84,16 @@ class Factory:
             self.resource_id_to_name[int(row["Index"])] = row["Name"]
 
         self.decision_id = np.arange(self.num_bays)
+        mask = np.ones(self.num_bays, dtype=bool)
         for i, row in self.df_locations.iterrows():
             if row["Category"] == 0:
                 self.decision_id[int(row["Global_Index"]):] -= 1
+                mask[int(row["Global_Index"])] = False
+
+        self.decision_id_to_location_id = {}
+        for location_id, decision_id in enumerate(self.decision_id):
+            if mask[location_id]:
+                self.decision_id_to_location_id[decision_id] = location_id
 
         self.fjsp_operation_feature_dim = 8
         self.fjsp_machine_feature_dim = 8
@@ -190,8 +197,8 @@ class Factory:
 
     def step(self, action):
         if self.scheduling_mode == "machine":
-            location_id = (action % (self.num_machines + self.num_buffers + self.num_outputpoints)
-                           + self.num_inputpoints)
+            location_id = self.decision_id_to_location_id[
+                action % (self.num_machines + self.num_buffers + self.num_outputpoints)]
             job_id = action // (self.num_machines + self.num_buffers + self.num_outputpoints)
 
             job = self.monitor.remove_from_queue(job_id, scheduling_mode=self.scheduling_mode)
