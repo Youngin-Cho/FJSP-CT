@@ -331,7 +331,7 @@ class Factory:
                     if category == 1:
                         if operation is not None:
                             flag_eligibility = int(operation.get_processing_time(local_id)) != 0
-                            mask_machine[global_id - self.num_inputpoints, job.id] \
+                            mask_machine[self.decision_id[global_id], job.id] \
                                 = (flag_eligibility & flag_availability
                                    & flag_accessibility & flag_crane_availability)
                         else:
@@ -341,13 +341,13 @@ class Factory:
                             continue
                         else:
                             if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
-                                mask_buffer[global_id - self.num_inputpoints, job.id] \
+                                mask_buffer[self.decision_id[global_id], job.id] \
                                     = flag_availability & flag_accessibility
                             else:
                                 continue
                     elif category == 3:
                         if operation is None:
-                            mask_output[global_id - self.num_inputpoints, job.id] \
+                            mask_output[self.decision_id[global_id], job.id] \
                                 = flag_availability & flag_accessibility
                         else:
                             continue
@@ -784,13 +784,13 @@ class Factory:
                             if location.category == 1:
                                 if operation is not None:
                                     proctime = operation.get_processing_time(location.local_id)
-                                    priority_idx[job.id, location.global_id - self.num_inputpoints] \
+                                    priority_idx[job.id, self.decision_id[location.global_id]] \
                                         = 1 / proctime if proctime > 0 else 0
                             elif location.category == 2:
-                                priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
+                                priority_idx[job.id, self.decision_id[location.global_id]] = 1
                             elif location.category == 3:
                                 if operation is None:
-                                    priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
+                                    priority_idx[job.id, self.decision_id[location.global_id]] = 1
 
                 elif machine_scheduling_algorithm == "MOR":
                     for job in self.monitor.queue_for_machine_scheduling.values():
@@ -798,13 +798,13 @@ class Factory:
                         for location in self.locations.values():
                             if location.category == 1:
                                 if remaining_operations > 0:
-                                    priority_idx[job.id, location.global_id - self.num_inputpoints] \
+                                    priority_idx[job.id, self.decision_id[location.global_id]] \
                                         = remaining_operations
                             elif location.category == 2:
-                                priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
+                                priority_idx[job.id, self.decision_id[location.global_id]] = 1
                             elif location.category == 3:
                                 if remaining_operations == 0:
-                                    priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
+                                    priority_idx[job.id, self.decision_id[location.global_id]] = 1
 
                 elif machine_scheduling_algorithm == "MWKR":
                     for job in self.monitor.queue_for_machine_scheduling.values():
@@ -816,13 +816,13 @@ class Factory:
                         for location in self.locations.values():
                             if location.category == 1:
                                 if remaining_work > 0.0:
-                                    priority_idx[job.id, location.global_id - self.num_inputpoints] \
+                                    priority_idx[job.id, self.decision_id[location.global_id]] \
                                         = remaining_work
                             elif location.category == 2:
-                                priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
+                                priority_idx[job.id, self.decision_id[location.global_id]] = 1
                             elif location.category == 3:
                                 if remaining_work == 0.0:
-                                    priority_idx[job.id, location.global_id - self.num_inputpoints] = 1
+                                    priority_idx[job.id, self.decision_id[location.global_id]] = 1
 
                 elif machine_scheduling_algorithm == "RAND":
                     priority_idx[:, :] = 1.0
