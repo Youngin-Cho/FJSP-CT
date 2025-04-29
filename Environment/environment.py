@@ -83,13 +83,10 @@ class Factory:
         for i, row in self.df_resources.iterrows():
             self.resource_id_to_name[int(row["Index"])] = row["Name"]
 
-        global_id = np.arange(self.num_bays)
-        mask = np.ones(self.num_bays, dtype=bool)
+        self.decision_id = np.arange(self.num_bays)
         for i, row in self.df_locations.iterrows():
             if row["Category"] == 0:
-                global_id[int(row["Global_Index"]):] -= 1
-                mask[int(row["Global_Index"])] = False
-        self.decision_id = global_id[mask]
+                self.decision_id[int(row["Global_Index"]):] -= 1
 
         self.fjsp_operation_feature_dim = 8
         self.fjsp_machine_feature_dim = 8
@@ -594,7 +591,7 @@ class Factory:
                               ycoord / self.y_max if self.y_max != 0 else 0]
 
                         if location.category == 1:
-                            reorder_idx[location.global_id - self.num_inputpoints] = location.local_id
+                            reorder_idx[self.decision_id[location.global_id]] = location.local_id
 
                             if fully_occupied:
                                 proctime_compatible[:, location.local_id] = -1
@@ -619,14 +616,14 @@ class Factory:
                             machine_feature[location.local_id, 4:] = [f2, f3, f4, f5]
 
                         elif location.category == 2:
-                            reorder_idx[location.global_id - self.num_inputpoints] \
+                            reorder_idx[self.decision_id[location.global_id]] \
                                 = self.num_machines + location.local_id
 
                             buffer_feature[location.local_id, :2] = f0
                             buffer_feature[location.local_id, 2:4] = f1
 
                         else:
-                            reorder_idx[location.global_id - self.num_inputpoints] \
+                            reorder_idx[self.decision_id[location.global_id]] \
                                 = self.num_machines + self.num_buffers + location.local_id
 
                             output_feature[location.local_id, :2] = f0
@@ -1615,7 +1612,7 @@ if __name__ == "__main__":
     ct_agent = CTHeuristic(algorithm[1])
 
     # data_src = DataGenerator()
-    data_src = "../input/validation/10-5/instance-1.xlsx"
+    data_src = "../input/new_validation/10-5/instance-1.xlsx"
     env = Factory(data_src, algorithm=algorithm, use_recording=True)
 
     step = 0
