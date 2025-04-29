@@ -83,6 +83,14 @@ class Factory:
         for i, row in self.df_resources.iterrows():
             self.resource_id_to_name[int(row["Index"])] = row["Name"]
 
+        global_id = np.arange(self.num_bays)
+        mask = np.ones(self.num_bays, dtype=bool)
+        for i, row in self.df_locations.iterrows():
+            if row["Category"] == 0:
+                global_id[int(row["Global_Index"]):] -= 1
+                mask[int(row["Global_Index"])] = False
+        self.decision_id = global_id[mask]
+
         self.fjsp_operation_feature_dim = 8
         self.fjsp_machine_feature_dim = 8
         self.fjsp_buffer_feature_dim = 4
