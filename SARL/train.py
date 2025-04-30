@@ -112,8 +112,8 @@ def train(config):
     if config.ct_algorithm == "RL":
         name = (setting["num_jobs"], setting["num_machines"], "CT", config.fjsp_algorithm, config.ct_algorithm)
 
-    model_dir = './output/train/model/%d-%d/%s/%s-%s/' % name
-    log_dir = './output/train/log/%d-%d/%s/%s-%s/' % name
+    model_dir = './output/train/SARL/model/%d-%d/%s/%s-%s/' % name
+    log_dir = './output/train/SARL/log/%d-%d/%s/%s-%s/' % name
 
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
