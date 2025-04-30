@@ -7,8 +7,6 @@ from torch.utils.tensorboard import SummaryWriter
 
 from Environment.environment import Factory
 from Environment.data import DataGenerator
-from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
-from Agent.CraneTransportation.heuristic import CTHeuristic
 from Agent.FlexibleJobShop.ppo import FJSPAgent
 from Agent.CraneTransportation.ppo import CTAgent
 from MARL.IL.validate import evaluate
