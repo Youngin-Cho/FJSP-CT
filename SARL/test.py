@@ -35,9 +35,13 @@ def get_config():
     parser.add_argument("--ct_model_path", type=str, default=None, help="model file path for the ct agent")
     parser.add_argument("--ct_param_path", type=str, default=None, help="hyper-parameter file path for the ct agent")
 
-    parser.add_argument("--data_dir", type=str, default=None, help="test data path")
-    parser.add_argument("--res_dir", type=str, default=None, help="test result file path")
-    parser.add_argument("--sim_dir", type=str, default=None, help="simulation log file path")
+    parser.add_argument("--data_dir", type=str, default=None, help="test data directory")
+    parser.add_argument("--res_dir", type=str, default=None, help="test result file directory")
+    parser.add_argument("--fjsp_param_dir", type=str, default=None, help="hyperparameter file directory for the fjsp agent")
+    parser.add_argument("--ct_param_dir", type=str, default=None, help="hyperparameter file directory for the ct agent")
+    parser.add_argument("--fjsp_model_dir", type=str, default=None, help="model file directory for the fjsp agent")
+    parser.add_argument("--ct_model_dir", type=str, default=None, help="model file directory for the ct agent")
+    parser.add_argument("--sim_dir", type=str, default=None, help="simulation log file directory")
 
     return parser.parse_args()
 
@@ -87,7 +91,8 @@ def test(config):
                                        num_heads=parameters["num_heads"],
                                        num_HGT_layers=parameters["num_HGT_layers"],
                                        num_actor_layers=parameters["num_actor_layers"],
-                                       num_critic_layers=parameters["num_critic_layers"]).to(device)
+                                       num_critic_layers=parameters["num_critic_layers"],
+                                       use_local_critic=True).to(device)
 
             checkpoint = torch.load(model_path, map_location=torch.device(device), weights_only=True)
             fjsp_agent.load_state_dict(checkpoint['model_state_dict'])
@@ -108,7 +113,8 @@ def test(config):
                                    num_heads=parameters["num_heads"],
                                    num_HGT_layers=parameters["num_HGT_layers"],
                                    num_actor_layers=parameters["num_actor_layers"],
-                                   num_critic_layers=parameters["num_critic_layers"]).to(device)
+                                   num_critic_layers=parameters["num_critic_layers"],
+                                   use_local_critic=True).to(device)
 
             checkpoint = torch.load(model_path, map_location=torch.device(device), weights_only=True)
             ct_agent.load_state_dict(checkpoint['model_state_dict'])
@@ -190,10 +196,11 @@ if __name__ == "__main__":
 
         # test_case = [("SPT", "SETT"), ("SPT", "TDD"), ("SPT", "TDT"),
         #              ("MOR", "SETT"), ("MOR", "TDD"), ("MOR", "TDT"),
-        #              ("MWKR", "SETT"), ("MWKR", "TDD"), ("MWKR", "TDT")]
+        #              ("MWKR", "SETT"), ("MWKR", "TDD"), ("MWKR", "TDT"),
+        #              ("RAND", "RAND")]
 
-    config.data_dir = "./input/test/%d-%d/" % (config.num_jobs, config.num_machines)
-    config.res_dir = "./output/test/%d-%d/" % (config.num_jobs, config.num_machines)
+    config.data_dir = "./input/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
+    config.res_dir = "./output/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
 
     if not os.path.exists(config.res_dir):
         os.makedirs(config.res_dir)
@@ -208,10 +215,16 @@ if __name__ == "__main__":
         config.ct_algorithm = ct_algorithm
 
         if fjsp_algorithm == "RL":
-            param_dir = ("./output/train/log/%d-%d/%s-%s/"
-                         % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-            model_dir = ("./output/train/model/%d-%d/%s-%s/"
-                         % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+            if (config.fjsp_param_dir is not None) and (config.fjsp_model_dir is not None):
+                param_dir = config.fjsp_param_dir
+                model_dir = config.fjsp_model_dir
+            else:
+                # param_dir = ("./output/train/SARL/log/%d-%d/FJSP/%s-%s/"
+                #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+                # model_dir = ("./output/train/SARL/model/%d-%d/FJSP/%s-%s/"
+                #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+                param_dir = ("./output/train/SARL/log/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
+                model_dir = ("./output/train/SARL/model/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
 
             episode = max(
                 int(os.path.splitext(filename)[0].split("-")[1])
@@ -223,14 +236,16 @@ if __name__ == "__main__":
             config.fjsp_model_path = model_dir + "episode-%d.pt" % episode
 
         if ct_algorithm == "RL":
-            param_dir = ("./output/train/log/%d-%d/%s-%s/"
-                         % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-            model_dir = ("./output/train/model/%d-%d/%s-%s/"
-                         % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-            # param_dir = ("./output/train_value/log/10-5/%s-%s/"
-            #              % (fjsp_algorithm, ct_algorithm))
-            # model_dir = ("./output/train_value/model/10-5/%s-%s/"
-            #              % (fjsp_algorithm, ct_algorithm))
+            if (config.ct_param_dir is not None) and (config.ct_model_dir is not None):
+                param_dir = config.ct_param_dir
+                model_dir = config.ct_model_dir
+            else:
+                # param_dir = ("./output/train/SARL/log/%d-%d/CT/%s-%s/"
+                #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+                # model_dir = ("./output/train/SARL/model/%d-%d/CT/%s-%s/"
+                #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+                param_dir = ("./output/train/SARL/log/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
+                model_dir = ("./output/train/SARL/model/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
 
             episode = max(
                 int(os.path.splitext(filename)[0].split("-")[1])

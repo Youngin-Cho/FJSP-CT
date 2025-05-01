@@ -32,6 +32,9 @@ def get_config():
 
     parser.add_argument("--data_dir", type=str, default=None, help="test data path")
     parser.add_argument("--res_dir", type=str, default=None, help="test result file path")
+    parser.add_argument("--param_dir", type=str, default=None, help="hyperparameter file directory")
+    parser.add_argument("--fjsp_model_dir", type=str, default=None, help="model file directory for the fjsp agent")
+    parser.add_argument("--ct_model_dir", type=str, default=None, help="model file directory for the ct agent")
     parser.add_argument("--sim_dir", type=str, default=None, help="simulation log file path")
 
     return parser.parse_args()
@@ -79,7 +82,8 @@ def test(config):
                                    num_heads=parameters["num_heads"],
                                    num_HGT_layers=parameters["num_HGT_layers"],
                                    num_actor_layers=parameters["num_actor_layers"],
-                                   num_critic_layers=parameters["num_critic_layers"]).to(device)
+                                   num_critic_layers=parameters["num_critic_layers"],
+                                   use_local_critic=True).to(device)
 
         checkpoint = torch.load(fjsp_model_path, map_location=torch.device(device), weights_only=True)
         fjsp_agent.load_state_dict(checkpoint['model_state_dict'])
@@ -93,7 +97,8 @@ def test(config):
                                num_heads=parameters["num_heads"],
                                num_HGT_layers=parameters["num_HGT_layers"],
                                num_actor_layers=parameters["num_actor_layers"],
-                               num_critic_layers=parameters["num_critic_layers"]).to(device)
+                               num_critic_layers=parameters["num_critic_layers"],
+                               use_local_critic=True).to(device)
 
         checkpoint = torch.load(ct_model_path, map_location=torch.device(device), weights_only=True)
         ct_agent.load_state_dict(checkpoint['model_state_dict'])
@@ -159,9 +164,14 @@ if __name__ == "__main__":
              if os.path.splitext(filename)[1] == '.xlsx']
     columns = [i for i in range(config.num_iterations)]
 
-    param_dir = "./output/train/IL/log/%d-%d/" % (config.num_jobs, config.num_machines)
-    fjsp_model_dir = "./output/train/IL/model/%d-%d/%s/" % (config.num_jobs, config.num_machines, "FJSP")
-    ct_model_dir = "./output/train/IL/model/%d-%d/%s/" % (config.num_jobs, config.num_machines, "CT")
+    if (config.param_dir is not None) and (config.fjsp_model_dir is not None) and (config.ct_model_dir is not None):
+        param_dir = config.param_dir
+        fjsp_model_dir = config.fjsp_model_dir
+        ct_model_dir = config.ct_model_dir
+    else:
+        param_dir = "./output/train/IL/log/%d-%d/" % (config.num_jobs, config.num_machines)
+        fjsp_model_dir = "./output/train/IL/model/%d-%d/%s/" % (config.num_jobs, config.num_machines, "FJSP")
+        ct_model_dir = "./output/train/IL/model/%d-%d/%s/" % (config.num_jobs, config.num_machines, "CT")
 
     fjsp_episode = max(
         int(os.path.splitext(filename)[0].split("-")[1])
