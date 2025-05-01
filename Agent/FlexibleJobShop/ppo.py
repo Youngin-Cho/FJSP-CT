@@ -162,9 +162,18 @@ class FJSPAgent:
 
             surr1 = ratio * advantage
             surr2 = torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
-            loss = (- self.P_coeff * torch.min(surr1, surr2)
-                    + self.V_coeff * F.smooth_l1_loss(new_values, td_target)
-                    - self.E_coeff * dist_entropy)
+            # loss = (- self.P_coeff * torch.min(surr1, surr2)
+            #         + self.V_coeff * F.smooth_l1_loss(new_values, td_target)
+            #         - self.E_coeff * dist_entropy)
+
+            policy_loss = torch.min(surr1, surr2)
+
+            new_values_clipped = values[:-1] + torch.clamp(new_values - values[:-1], -self.eps_clip, self.eps_clip)
+            value_loss_clipped = F.smooth_l1_loss(new_values_clipped, td_target)
+            value_loss_original = F.smooth_l1_loss(new_values, td_target)
+            value_loss = torch.max(value_loss_original, value_loss_clipped)
+
+            loss = - self.P_coeff * policy_loss + self.V_coeff * value_loss - self.E_coeff * dist_entropy
 
             self.optimizer.zero_grad()
             loss.mean().backward()
