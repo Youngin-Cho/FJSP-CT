@@ -95,6 +95,7 @@ class FJSPAgent:
                  V_coeff,  # 가치함수 학습에 대한 가중치
                  E_coeff,  # 엔트로피에 대한 가중치
                  use_value_clipping,
+                 use_local_critic,
                  device="cpu"):
 
         self.name = "RL"
@@ -110,8 +111,15 @@ class FJSPAgent:
         self.device = device
 
         self.memory = RollOutMemory(device)
-        self.network = FJSPScheduler(meta_data, state_size, num_nodes, embed_dim, num_heads,
-                                     num_HGT_layers, num_actor_layers, num_critic_layers).to(device)
+        self.network = FJSPScheduler(meta_data=meta_data,
+                                     state_size=state_size,
+                                     num_nodes=num_nodes,
+                                     embed_dim=embed_dim,
+                                     num_heads=num_heads,
+                                     num_HGT_layers=num_HGT_layers,
+                                     num_actor_layers=num_actor_layers,
+                                     num_critic_layers=num_critic_layers,
+                                     use_local_critic=use_local_critic).to(device)
         self.optimizer = optim.Adam(self.network.parameters(), lr=lr)
         self.scheduler = StepLR(optimizer=self.optimizer, step_size=lr_step, gamma=lr_decay)
 

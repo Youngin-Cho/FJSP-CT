@@ -9,7 +9,7 @@ from torch.nn import Parameter
 
 class FJSPScheduler(nn.Module):
     def __init__(self, meta_data, state_size, num_nodes, embed_dim, num_heads,
-                       num_HGT_layers, num_actor_layers, num_critic_layers):
+                       num_HGT_layers, num_actor_layers, num_critic_layers, use_local_critic=True):
         super(FJSPScheduler, self).__init__()
         self.meta_data = meta_data
         self.state_size = state_size
@@ -19,6 +19,7 @@ class FJSPScheduler(nn.Module):
         self.num_HGT_layers = num_HGT_layers
         self.num_actor_layers = num_actor_layers
         self.num_critic_layers = num_critic_layers
+        self.use_local_critic = use_local_critic
 
         self.num_locations = self.num_nodes["machine"] + self.num_nodes["buffer"] + self.num_nodes["output"]
 
@@ -42,14 +43,15 @@ class FJSPScheduler(nn.Module):
             else:
                 self.actor.append(nn.Linear(embed_dim, 1))
 
-        self.critic = nn.ModuleList()
-        for i in range(num_critic_layers):
-            if i == 0:
-                self.critic.append(nn.Linear(embed_dim * 2, embed_dim))
-            elif i < num_critic_layers - 1:
-                self.critic.append(nn.Linear(embed_dim, embed_dim))
-            else:
-                self.critic.append(nn.Linear(embed_dim, 1))
+        if use_local_critic:
+            self.critic = nn.ModuleList()
+            for i in range(num_critic_layers):
+                if i == 0:
+                    self.critic.append(nn.Linear(embed_dim * 2, embed_dim))
+                elif i < num_critic_layers - 1:
+                    self.critic.append(nn.Linear(embed_dim, embed_dim))
+                else:
+                    self.critic.append(nn.Linear(embed_dim, 1))
 
     def act(self, graph_feature, pairwise_feature, mask, current_operations, reorder_idx, greedy=False):
         x_dict, edge_index_dict = graph_feature.x_dict, graph_feature.edge_index_dict
@@ -68,14 +70,8 @@ class FJSPScheduler(nn.Module):
         jobs_gather = current_operations.unsqueeze(-1).expand(-1, self.embed_dim)
         h_jobs = h_ops.gather(0, jobs_gather)
 
-        h_locations_pooled = h_locations.mean(dim=-2)
-        h_ops_pooled = h_ops.mean(dim=-2)
-
         h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, self.num_locations, -1)
         h_locations_padding = h_locations.unsqueeze(-3).expand_as(h_jobs_padding)
-
-        # h_machines_pooled_padding = h_machines_pooled[None, None, :].expand_as(h_machines_padding)
-        # h_jobs_pooled_padding = h_jobs_pooled[None, None, :].expand_as(h_jobs_padding)
 
         h_added = pairwise_feature
         for i in range(self.num_HGT_layers):
@@ -83,7 +79,6 @@ class FJSPScheduler(nn.Module):
             h_added = F.elu(h_added)
 
         h_actions = torch.cat((h_locations_padding, h_jobs_padding, h_added), dim=-1)
-        h_pooled = torch.cat((h_locations_pooled, h_ops_pooled), dim=-1)
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:
@@ -108,14 +103,23 @@ class FJSPScheduler(nn.Module):
                 action = dist.sample()
                 action_logprob = dist.log_prob(action)
 
-        for i in range(self.num_critic_layers):
-            if i < len(self.critic) - 1:
-                h_pooled = self.critic[i](h_pooled)
-                h_pooled = F.elu(h_pooled)
-            else:
-                state_value = self.critic[i](h_pooled)
+        if self.use_local_critic:
+            h_locations_pooled = h_locations.mean(dim=-2)
+            h_ops_pooled = h_ops.mean(dim=-2)
 
-        return action.item(), action_logprob.item(), state_value.squeeze().item()
+            h_pooled = torch.cat((h_locations_pooled, h_ops_pooled), dim=-1)
+
+            for i in range(self.num_critic_layers):
+                if i < len(self.critic) - 1:
+                    h_pooled = self.critic[i](h_pooled)
+                    h_pooled = F.elu(h_pooled)
+                else:
+                    state_value = self.critic[i](h_pooled)
+
+        if self.use_local_critic:
+            return action.item(), action_logprob.item(), state_value.squeeze().item()
+        else:
+            return action.item(), action_logprob.item()
 
     def evaluate(self, batch_graph_feature, batch_pairwise_feature, batch_action, batch_mask, batch_current_operations, batch_reorder_idxs):
         batch_size = batch_graph_feature.num_graphs
@@ -135,14 +139,8 @@ class FJSPScheduler(nn.Module):
         jobs_gather = batch_current_operations.unsqueeze(-1).expand(-1, -1, self.embed_dim)
         h_jobs = h_ops.gather(1, jobs_gather)
 
-        h_locations_pooled = h_locations.mean(dim=-2)
-        h_ops_pooled = h_ops.mean(dim=-2)
-
         h_jobs_padding = h_jobs.unsqueeze(-2).expand(-1, -1, self.num_locations, -1)
         h_locations_padding = h_locations.unsqueeze(-3).expand_as(h_jobs_padding)
-
-        # h_machines_pooled_padding = h_machines_pooled[:, None, None, :].expand_as(h_machines_padding)
-        # h_jobs_pooled_padding = h_jobs_pooled[:, None, None, :].expand_as(h_jobs_padding)
 
         h_added = batch_pairwise_feature
         for i in range(self.num_HGT_layers):
@@ -150,7 +148,6 @@ class FJSPScheduler(nn.Module):
             h_added = F.elu(h_added)
 
         h_actions = torch.cat((h_locations_padding, h_jobs_padding, h_added), dim=-1)
-        h_pooled = torch.cat((h_locations_pooled, h_ops_pooled), dim=-1)
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:
@@ -165,13 +162,22 @@ class FJSPScheduler(nn.Module):
         batch_dist = Categorical(batch_probs)
         batch_action_logprobs = batch_dist.log_prob(batch_action.squeeze()).unsqueeze(-1)
 
-        for i in range(self.num_critic_layers):
-            if i < len(self.critic) - 1:
-                h_pooled = self.critic[i](h_pooled)
-                h_pooled = F.elu(h_pooled)
-            else:
-                batch_state_values = self.critic[i](h_pooled)
+        if self.use_local_critic:
+            h_locations_pooled = h_locations.mean(dim=-2)
+            h_ops_pooled = h_ops.mean(dim=-2)
+
+            h_pooled = torch.cat((h_locations_pooled, h_ops_pooled), dim=-1)
+
+            for i in range(self.num_critic_layers):
+                if i < len(self.critic) - 1:
+                    h_pooled = self.critic[i](h_pooled)
+                    h_pooled = F.elu(h_pooled)
+                else:
+                    batch_state_values = self.critic[i](h_pooled)
 
         batch_dist_entropys = batch_dist.entropy().unsqueeze(-1)
 
-        return batch_action_logprobs, batch_state_values, batch_dist_entropys
+        if self.use_local_critic:
+            return batch_action_logprobs, batch_state_values, batch_dist_entropys
+        else:
+            return batch_action_logprobs, batch_dist_entropys

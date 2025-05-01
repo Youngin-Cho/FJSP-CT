@@ -172,6 +172,7 @@ def train(config):
                                V_coeff=V_coeff,
                                E_coeff=E_coeff,
                                use_value_clipping=use_value_clipping,
+                               use_local_critic=True,
                                device=device)
 
     else:
@@ -197,6 +198,7 @@ def train(config):
                            V_coeff=V_coeff,
                            E_coeff=E_coeff,
                            use_value_clipping=use_value_clipping,
+                           use_local_critic=True,
                            device=device)
     else:
         ct_agent = CTHeuristic(ct_algorithm)
