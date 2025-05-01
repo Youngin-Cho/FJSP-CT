@@ -46,6 +46,7 @@ def get_config():
     parser.add_argument("--P_coeff", type=float, default=1, help="coefficient for policy loss")
     parser.add_argument("--V_coeff", type=float, default=0.5, help="coefficient for value loss")
     parser.add_argument("--E_coeff", type=float, default=0.01, help="coefficient for entropy loss")
+    parser.add_argument('--no_value_clipping', action='store_true', help="Disable value clipping")
 
     parser.add_argument("--eval_every", type=int, default=50, help="Evaluate every x episodes")
     parser.add_argument("--save_every", type=int, default=500, help="Save a model every x episodes")
@@ -97,6 +98,7 @@ def train(config):
     P_coeff = config.P_coeff
     V_coeff = config.V_coeff
     E_coeff = config.E_coeff
+    use_value_clipping = False if config.no_value_clipping else True
 
     eval_every = config.eval_every
     save_every = config.save_every
@@ -169,6 +171,7 @@ def train(config):
                                P_coeff=P_coeff,
                                V_coeff=V_coeff,
                                E_coeff=E_coeff,
+                               use_value_clipping=use_value_clipping,
                                device=device)
 
     else:
@@ -193,6 +196,7 @@ def train(config):
                            P_coeff=P_coeff,
                            V_coeff=V_coeff,
                            E_coeff=E_coeff,
+                           use_value_clipping=use_value_clipping,
                            device=device)
     else:
         ct_agent = CTHeuristic(ct_algorithm)
