@@ -10,8 +10,6 @@ import pandas as pd
 from Environment.environment import Factory
 from Agent.FlexibleJobShop.network import FJSPScheduler
 from Agent.CraneTransportation.network import CTScheduler
-from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
-from Agent.CraneTransportation.heuristic import CTHeuristic
 
 
 def get_config():
@@ -154,7 +152,7 @@ if __name__ == "__main__":
     config = get_config()
 
     config.data_dir = "./input/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
-    config.res_dir = "./output/case1/test/%d-%d/IPPO/" % (config.num_jobs, config.num_machines)
+    config.res_dir = "./output/case1/test/%d-%d/IL/" % (config.num_jobs, config.num_machines)
 
     if not os.path.exists(config.res_dir):
         os.makedirs(config.res_dir)
@@ -169,9 +167,9 @@ if __name__ == "__main__":
         fjsp_model_dir = config.fjsp_model_dir
         ct_model_dir = config.ct_model_dir
     else:
-        param_dir = "./output/train/IL/log/%d-%d/" % (config.num_jobs, config.num_machines)
-        fjsp_model_dir = "./output/train/IL/model/%d-%d/%s/" % (config.num_jobs, config.num_machines, "FJSP")
-        ct_model_dir = "./output/train/IL/model/%d-%d/%s/" % (config.num_jobs, config.num_machines, "CT")
+        param_dir = "./output/train/MARL/log/%d-%d/IL/" % (config.num_jobs, config.num_machines)
+        fjsp_model_dir = "./output/train/MARL/model/%d-%d/IL/%s/" % (config.num_jobs, config.num_machines, "FJSP")
+        ct_model_dir = "./output/train/MARL/model/%d-%d/IL/%s/" % (config.num_jobs, config.num_machines, "CT")
 
     fjsp_episode = max(
         int(os.path.splitext(filename)[0].split("-")[1])
