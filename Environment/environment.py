@@ -32,8 +32,8 @@ class State:
 
         if self.algorithm == "RL":
             self.graph_feature = graph_feature
-            self.pairwise_feature = pairwise_feature
-            self.mask = mask
+            self.pairwise_feature = pairwise_feature if pairwise_feature is not None else None
+            self.mask = mask if mask is not None else None
             self.current_operations = current_operations if current_operations is not None else None
             self.reorder_idx = reorder_idx if reorder_idx is not None else None
         else:
@@ -42,12 +42,15 @@ class State:
 
 
 class Factory:
-    def __init__(self, data_src, safety_margin=2, device='cpu', algorithm=('RL', 'RL'), use_recording=False):
+    def __init__(self, data_src, safety_margin=2, device='cpu', algorithm=('RL', 'RL'),
+                 use_recording=False, return_global_state=False):
+
         self.data_src = data_src
         self.safety_margin = safety_margin
         self.device = device
         self.algorithm = algorithm
         self.use_recording = use_recording
+        self.return_global_state = return_global_state
 
         if type(data_src) is DataGenerator:
             self.df_operations, self.df_locations, self.df_resources = data_src.generate()
@@ -95,102 +98,99 @@ class Factory:
             if mask[location_id]:
                 self.decision_id_to_location_id[decision_id] = location_id
 
-        self.fjsp_operation_feature_dim = 8
-        self.fjsp_machine_feature_dim = 8
-        self.fjsp_buffer_feature_dim = 4
-        self.fjsp_output_feature_dim = 4
-        self.fjsp_pairwise_feature_dim = 6
+        if algorithm[0] == "RL":
+            self.fjsp_operation_feature_dim = 8
+            self.fjsp_machine_feature_dim = 8
+            self.fjsp_buffer_feature_dim = 4
+            self.fjsp_output_feature_dim = 4
+            self.fjsp_pairwise_feature_dim = 6
 
-        self.fjsp_meta_data = (
-            ["operation", "machine", "buffer", "output"],
-            [("operation", "predecessor", "operation"),
-             ("operation", "successor", "operation"),
-             ("machine", "machine_to_operation", "operation"),
-             ("operation", "operation_to_machine", "machine"),
-             ("buffer", "buffer_to_operation", "operation"),
-             ("operation", "operation_to_buffer", "buffer"),
-             ("operation", "operation_to_output", "output"),
-             ("output", "output_to_operation", "operation"),])
+            self.fjsp_meta_data = (
+                ["operation", "machine", "buffer", "output"],
+                [("operation", "predecessor", "operation"),
+                 ("operation", "successor", "operation"),
+                 ("machine", "machine_to_operation", "operation"),
+                 ("operation", "operation_to_machine", "machine"),
+                 ("buffer", "buffer_to_operation", "operation"),
+                 ("operation", "operation_to_buffer", "buffer"),
+                 ("operation", "operation_to_output", "output"),
+                 ("output", "output_to_operation", "operation")])
 
-        self.fjsp_state_size = {
-            "operation": self.fjsp_operation_feature_dim,
-            "machine": self.fjsp_machine_feature_dim,
-            "buffer": self.fjsp_buffer_feature_dim,
-            "output": self.fjsp_output_feature_dim
-        }
+            self.fjsp_state_size = {
+                "operation": self.fjsp_operation_feature_dim,
+                "machine": self.fjsp_machine_feature_dim,
+                "buffer": self.fjsp_buffer_feature_dim,
+                "output": self.fjsp_output_feature_dim
+            }
 
-        self.fjsp_num_nodes = {
-            "operation": self.num_operations,
-            "machine": self.num_machines,
-            "buffer": self.num_buffers,
-            "output": self.num_outputpoints
-        }
+            self.fjsp_num_nodes = {
+                "operation": self.num_operations,
+                "machine": self.num_machines,
+                "buffer": self.num_buffers,
+                "output": self.num_outputpoints
+            }
 
-        # self.ct_crane_feature_dim = 6
-        # self.ct_location_feature_dim = 8
-        # self.ct_pairwise_feature_dim = 2
-        #
-        # self.ct_meta_data = (
-        #     ["crane", "location"],
-        #     [("crane", "crane_to_crane", "crane"),
-        #      ("location", "location_to_location", "location"),
-        #      ("crane", "crane_to_location", "location"),
-        #      ("location", "location_to_crane", "crane")]
-        # )
-        #
-        # self.ct_state_size = {
-        #     "crane": self.ct_crane_feature_dim,
-        #     "location": self.ct_location_feature_dim
-        # }
-        #
-        # self.ct_num_nodes = {
-        #     "crane": self.num_cranes + 1,
-        #     "location": self.num_locations
-        # }
+        if algorithm[1] == "RL":
+            self.ct_crane_feature_dim = 6
+            self.ct_operation_feature_dim = 5
+            self.ct_pairwise_feature_dim = 2
 
-        # self.ct_crane_feature_dim = 6
-        # self.ct_job_feature_dim = 8
-        # self.ct_pairwise_feature_dim = 2
-        #
-        # self.ct_meta_data = (
-        #     ["crane", "job"],
-        #     [("crane", "crane_to_crane", "crane"),
-        #      ("crane", "crane_to_job", "job"),
-        #      ("job", "job_to_crane", "crane")]
-        # )
-        #
-        # self.ct_state_size = {
-        #     "crane": self.ct_crane_feature_dim,
-        #     "job": self.ct_job_feature_dim
-        # }
-        #
-        # self.ct_num_nodes = {
-        #     "crane": self.num_cranes + 1,
-        #     "job": self.num_jobs
-        # }
+            self.ct_meta_data = (
+                ["crane", "operation"],
+                [("crane", "crane_to_crane", "crane"),
+                 ("operation", "predecessor", "operation"),
+                 ("operation", "successor", "operation"),
+                 ("crane", "crane_to_operation", "operation"),
+                 ("operation", "operation_to_crane", "crane")]
+            )
 
-        self.ct_crane_feature_dim = 6
-        self.ct_operation_feature_dim = 5
-        self.ct_pairwise_feature_dim = 2
+            self.ct_state_size = {
+                "crane": self.ct_crane_feature_dim,
+                "operation": self.ct_operation_feature_dim
+            }
 
-        self.ct_meta_data = (
-            ["crane", "operation"],
-            [("crane", "crane_to_crane", "crane"),
-             ("operation", "predecessor", "operation"),
-             ("operation", "successor", "operation"),
-             ("crane", "crane_to_operation", "operation"),
-             ("operation", "operation_to_crane", "crane")]
-        )
+            self.ct_num_nodes = {
+                "crane": self.num_cranes + 1,
+                "operation": self.num_operations
+            }
 
-        self.ct_state_size = {
-            "crane": self.ct_crane_feature_dim,
-            "operation": self.ct_operation_feature_dim
-        }
+        if return_global_state:
+            self.global_crane_feature_dim = 6
+            self.global_machine_feature_dim = 8
+            self.global_buffer_feature_dim = 4
+            self.global_output_feature_dim = 4
+            self.global_operation_feature_dim = 13
 
-        self.ct_num_nodes = {
-            "crane": self.num_cranes + 1,
-            "operation": self.num_operations
-        }
+            self.global_meta_data = (
+                ["crane", "machine", "buffer", "output", "operation"],
+                [("crane", "crane_to_crane", "crane"),
+                 ("operation", "predecessor", "operation"),
+                 ("operation", "successor", "operation"),
+                 ("crane", "crane_to_operation", "operation"),
+                 ("operation", "operation_to_crane", "crane"),
+                 ("machine", "machine_to_operation", "operation"),
+                 ("operation", "operation_to_machine", "machine"),
+                 ("buffer", "buffer_to_operation", "operation"),
+                 ("operation", "operation_to_buffer", "buffer"),
+                 ("operation", "operation_to_output", "output"),
+                 ("output", "output_to_operation", "operation")]
+            )
+
+            self.global_state_size = {
+                "crane": self.global_crane_feature_dim,
+                "machine": self.global_machine_feature_dim,
+                "buffer": self.global_buffer_feature_dim,
+                "output": self.global_output_feature_dim,
+                "operation": self.global_operation_feature_dim
+            }
+
+            self.global_num_nodes = {
+                "crane": self.num_cranes + 1,
+                "machine": self.num_machines,
+                "buffer": self.num_buffers,
+                "output": self.num_outputpoints,
+                "operation": self.num_operations
+            }
 
         self.state = None
         self.mask = None
@@ -262,19 +262,24 @@ class Factory:
                 done = True
                 # self.monitor.get_logs("./temp.xlsx")
                 break
-            
+
             self.sim_env.step()
 
         self._update_completion_time()
 
-        next_state = self._get_state()
+        next_local_state = self._get_local_state()
+        if self.return_global_state and self.scheduling_mode == "machine":
+            next_global_state = self._get_global_state()
         reward = self._calculate_reward()
 
         self.estimated_completion_time = copy.copy(self.estimated_completion_time_updated)
         if self.decision_time != self.sim_env.now:
             self.decision_time = self.sim_env.now
 
-        return next_state, reward, done
+        if self.return_global_state and self.scheduling_mode == "machine":
+            return next_local_state, next_global_state, reward, done
+        else:
+            return next_local_state, reward, done
 
     def reset(self):
         self.sim_env, self.jobs, self.source, self.sink, self.locations, self.resources, self.monitor \
@@ -297,12 +302,17 @@ class Factory:
 
         self._update_completion_time()
 
-        state = self._get_state()
+        local_state = self._get_local_state()
+        if self.return_global_state and self.scheduling_mode == "machine":
+            global_state = self._get_global_state()
 
         self.estimated_completion_time = copy.copy(self.estimated_completion_time_updated)
         self.decision_time = self.sim_env.now
 
-        return state
+        if self.return_global_state and self.scheduling_mode == "machine":
+            return local_state, global_state
+        else:
+            return local_state
 
     def _get_ms_mask(self):
         num_rows = self.num_machines + self.num_buffers + self.num_outputpoints
@@ -390,8 +400,6 @@ class Factory:
 
     def _get_cs_mask(self, job, next_location):
         num_rows = self.num_cranes + 1
-        # num_columns = self.num_locations
-        # num_columns = self.num_jobs
         num_columns = self.num_operations
         mask = np.zeros((num_rows, num_columns), dtype=bool)
 
@@ -401,8 +409,6 @@ class Factory:
 
         location_id = self.locations[job.current_location].global_id
         if job.current_location == next_location:
-            # mask[self.num_cranes, location_id] = 1
-            # mask[self.num_cranes, job.id] = 1
             mask[self.num_cranes, operation.id] = 1
         else:
             current_location_coord = self.locations[job.current_location].coord
@@ -487,12 +493,6 @@ class Factory:
                         flag_not_blocked = False
                         break
 
-                # mask[crane.id, location_id] \
-                #     = flag_accessibility & flag_not_reversed & flag_not_cycled & flag_not_blocked
-
-                # mask[crane.id, job.id] \
-                #     = flag_accessibility & flag_not_reversed & flag_not_cycled & flag_not_blocked
-
                 mask[crane.id, operation.id] \
                     = flag_accessibility & flag_not_reversed & flag_not_cycled & flag_not_blocked
 
@@ -500,7 +500,358 @@ class Factory:
 
         return mask
 
-    def _get_state(self):
+    def _get_global_state(self):
+        operation_feature = np.zeros((self.num_operations, self.global_operation_feature_dim))
+        crane_feature = np.zeros((self.num_cranes + 1, self.global_crane_feature_dim))
+        machine_feature = np.zeros((self.num_machines, self.global_machine_feature_dim))
+        buffer_feature = np.zeros((self.num_buffers, self.global_buffer_feature_dim))
+        output_feature = np.zeros((self.num_outputpoints, self.global_output_feature_dim))
+
+        reorder_idx = np.zeros(self.num_machines + self.num_buffers + self.num_outputpoints)
+
+        edge_crane_to_crane = [[], []]
+        edge_predecessor, edge_successor = [[], []], [[], []]
+        edge_crane_to_operation, edge_operation_to_crane = [[], []], [[], []]
+        edge_machine_to_operation, edge_operation_to_machine = [[], []], [[], []]
+        edge_buffer_to_operation, edge_operation_to_buffer = [[], []], [[], []]
+        edge_output_to_operation, edge_operation_to_output = [[], []], [[], []]
+
+        proctime_current = np.zeros((self.num_jobs, self.num_machines))
+        proctime_current_mask = np.zeros(self.num_jobs, dtype=bool)
+
+        # Operation Feature
+        for j in self.df_operations["Job_Index"].unique():
+            if j in self.monitor.jobs_before_system.keys():
+                job = self.monitor.jobs_before_system[j]
+            elif j in self.monitor.jobs_in_system.keys():
+                job = self.monitor.jobs_in_system[j]
+            else:
+                job = self.monitor.jobs_after_system[j]
+
+            # 의사결정이 필요한 job에 대하여, 해당 job의 다음 operation 작업시간 정보
+            if j in self.monitor.queue_for_machine_scheduling.keys():
+                if job.step < len(job.operations):
+                    proctime_current[job.id, :] \
+                        = ((job.operations[job.step].options - self.proctime_min)
+                           / (self.proctime_max - self.proctime_min))
+                    proctime_current_mask[job.id] = True
+
+            # job에 수행되는 각 operation의 평균 작업시간
+            job_proctime = [(np.mean(operation.options[operation.options != 0] - self.proctime_min)
+                             / (self.proctime_max - self.proctime_min))
+                            for operation in job.operations]
+
+            for k, operation in enumerate(job.operations):
+                eligible_options = ((operation.options[operation.options != 0] - self.proctime_min)
+                                    / (self.proctime_max - self.proctime_min))
+
+                if (operation.id in self.monitor.operations_working.keys()
+                        or operation.id in self.monitor.operations_waiting.keys()):
+                    f0 = [0, 1, 0]
+                elif operation.id in self.monitor.operations_done:
+                    f0 = [0, 0, 1]
+                else:
+                    f0 = [1, 0, 0]
+
+                f1 = np.min(eligible_options)
+                f2 = np.mean(eligible_options)
+                f3 = np.max(eligible_options)
+                f4 = np.sum(job_proctime[k:])  # / (len(job.operations) - k)
+                f5 = len(eligible_options) / self.num_machines
+
+                if operation.id in self.monitor.operations_loading.keys():
+                    f6 = [1, 0, 0]
+                elif operation.id in self.monitor.operations_unloading.keys():
+                    f6 = [0, 1, 0]
+                else:
+                    f6 = [0, 0, 1]
+
+                if j in self.monitor.jobs_before_system.keys():
+                    location = None
+                elif j in self.monitor.jobs_after_system.keys():
+                    location = self.locations[operation.allocated_machine]
+                else:
+                    if (operation.id in self.monitor.operations_loading
+                            or operation.id in self.monitor.operations_unloading):
+                        location = self.locations[job.next_location]
+                    else:
+                        if (operation.id in self.monitor.operations_done.keys()):
+                            if operation.id == job.operations[-1].id:
+                                location = self.locations[job.current_location]
+                            else:
+                                location = self.locations[operation.allocated_machine]
+                        elif (operation.id in self.monitor.operations_unscheduled.keys()):
+                            location = None
+                        else:
+                            location = self.locations[job.current_location]
+
+                if location is not None:
+                    f7 = location.coord[0] / self.x_max if self.x_max != 0 else 0
+                    f8 = location.coord[1] / self.y_max if self.y_max != 0 else 0
+                else:
+                    f7 = -1
+                    f8 = -1
+
+                operation_feature[operation.id, :3] = f0
+                operation_feature[operation.id, 3:8] = [f1, f2, f3, f4, f5]
+                operation_feature[operation.id, 8:11] = f6
+                operation_feature[operation.id, 11:] = [f7, f8]
+
+        # Location Feature
+        proctime_current = proctime_current[proctime_current_mask]
+        proctime_current_mean = np.array([np.mean(temp[temp >= 0]) for temp in proctime_current])
+        proctime_current_sum = np.sum(proctime_current_mean)  # 스케줄링 대상 operation의 평균 작업시간 합
+        proctime_compatible = np.copy(proctime_current)
+
+        available_time_list = []
+        for location in self.locations.values():
+            if location.category == 0:
+                continue
+            else:
+                fully_occupied = location.check_status()
+                if not fully_occupied:
+                    f0 = [1, 0]
+                else:
+                    f0 = [0, 1]
+
+                xcoord, ycoord = location.coord
+                f1 = [xcoord / self.x_max if self.x_max != 0 else 0,
+                      ycoord / self.y_max if self.y_max != 0 else 0]
+
+                if location.category == 1:
+                    reorder_idx[self.decision_id[location.global_id]] = location.local_id
+
+                    if fully_occupied:
+                        proctime_compatible[:, location.local_id] = -1
+
+                    eligible_proctime_current = proctime_current[:, location.local_id][
+                        proctime_current[:, location.local_id] >= 0]
+
+                    available_time = location.get_available_time()
+                    available_time_list.append(available_time)
+
+                    f2 = np.sum(eligible_proctime_current) / proctime_current_sum \
+                        if proctime_current_sum != 0 else 0
+                    f3 = len(eligible_proctime_current) / len(proctime_current) \
+                        if len(proctime_current) > 0 else 0
+                    f4 = available_time - self.sim_env.now
+                    f5 = (self.sim_env.now - location.completion_time) if not fully_occupied else 0
+
+                    machine_feature[location.local_id, :2] = f0
+                    machine_feature[location.local_id, 2:4] = f1
+                    machine_feature[location.local_id, 4:] = [f2, f3, f4, f5]
+
+                elif location.category == 2:
+                    reorder_idx[self.decision_id[location.global_id]] \
+                        = self.num_machines + location.local_id
+
+                    buffer_feature[location.local_id, :2] = f0
+                    buffer_feature[location.local_id, 2:4] = f1
+
+                else:
+                    reorder_idx[self.decision_id[location.global_id]] \
+                        = self.num_machines + self.num_buffers + location.local_id
+
+                    output_feature[location.local_id, :2] = f0
+                    output_feature[location.local_id, 2:4] = f1
+
+        if int(np.max(available_time_list) - self.sim_env.now) != 0:
+            machine_feature[:, 6] = machine_feature[:, 6] / (np.max(available_time_list) - self.sim_env.now)
+        machine_feature[:, 7] = machine_feature[:, 7] / np.max(machine_feature[:, 7]) \
+            if np.max(machine_feature[:, 7]) > 0.0 else 0.0
+
+        # Crane Feature
+        for crane in self.resources.values():
+            f1 = crane.current_coord[0] / self.x_max if self.x_max != 0 else 0
+            f2 = crane.current_coord[1] / self.y_max if self.y_max != 0 else 0
+
+            if len(crane.queue) > 0:
+                last_working_order = crane.queue[-1]
+            elif crane.current_working_order is not None:
+                last_working_order = crane.current_working_order
+            else:
+                last_working_order = None
+
+            if last_working_order is not None:
+                target_location = self.locations[last_working_order[2]]
+                target_coord = target_location.coord
+
+                f3 = target_coord[0] / self.x_max if self.x_max != 0 else 0
+                f4 = target_coord[1] / self.y_max if self.y_max != 0 else 0
+            else:
+                f3 = -1
+                f4 = -1
+
+            remaining_jobs = 0
+            if crane.current_working_order is not None:
+                remaining_jobs += 1
+            remaining_jobs += len(crane.queue)
+
+            location_seq = []
+            if crane.current_working_order is not None:
+                if crane.to_location == crane.current_working_order[1]:
+                    location_seq.append(crane.current_working_order[1])
+                    location_seq.append(crane.current_working_order[2])
+                else:
+                    location_seq.append(crane.current_working_order[2])
+            for working_order in crane.queue:
+                location_seq.append(working_order[1])
+                location_seq.append(working_order[2])
+
+            f5 = remaining_jobs / len(self.monitor.jobs_in_system)
+
+            remaining_work = 0
+            current_coord = crane.current_coord
+            for i, location_name in enumerate(location_seq):
+                location_coord = self.locations[location_name].coord
+
+                x_travel_time = abs(location_coord[0] - current_coord[0]) / crane.x_velocity
+                y_travel_time = abs(location_coord[1] - current_coord[1]) / crane.y_velocity
+                travel_time = max(x_travel_time, y_travel_time)
+                remaining_work += travel_time
+
+                current_coord = location_coord
+
+            f6 = remaining_work
+
+            crane_feature[crane.id, :] = [f1, f2, f3, f4, f5, f6]
+
+        # Dummy node
+        if self.monitor.queue_for_crane_scheduling is not None:
+            current_location = self.monitor.queue_for_crane_scheduling.current_location
+            current_coord = self.locations[current_location].coord
+            f1 = current_coord[0] / self.x_max if self.x_max != 0 else 0
+            f2 = current_coord[1] / self.y_max if self.y_max != 0 else 0
+        else:
+            f1 = -1
+            f2 = -1
+
+        crane_feature[self.num_cranes, :] = [f1, f2, -1, -1, 0, 0]
+
+        crane_feature[:, 5] = crane_feature[:, 5] / np.max(crane_feature[:, 5]) \
+            if np.max(crane_feature[:, 5]) > 0.0 else 0.0
+
+        # Edge Construction
+        for j in self.df_operations["Job_Index"].unique():
+            if j in self.monitor.jobs_before_system.keys():
+                job = self.monitor.jobs_before_system[j]
+            elif j in self.monitor.jobs_in_system.keys():
+                job = self.monitor.jobs_in_system[j]
+            else:
+                job = self.monitor.jobs_after_system[j]
+
+            for k, operation in enumerate(job.operations):
+                if k > 0:
+                    edge_predecessor[0].append(operation.id - 1)
+                    edge_predecessor[1].append(operation.id)
+                    edge_successor[0].append(operation.id)
+                    edge_successor[1].append(operation.id - 1)
+
+                for location in self.locations.values():
+                    if location.category == 0:
+                        continue
+
+                    elif location.category == 1:
+                        if k >= job.step:
+                            proctime = operation.get_processing_time(location.local_id)
+                            if proctime != 0:
+                                edge_operation_to_machine[0].append(operation.id)
+                                edge_operation_to_machine[1].append(location.local_id)
+                                edge_machine_to_operation[0].append(location.local_id)
+                                edge_machine_to_operation[1].append(operation.id)
+                        else:
+                            if location.name == operation.allocated_machine:
+                                edge_operation_to_machine[0].append(operation.id)
+                                edge_operation_to_machine[1].append(location.local_id)
+                                edge_machine_to_operation[0].append(location.local_id)
+                                edge_machine_to_operation[1].append(operation.id)
+
+                    elif location.category == 2:
+                        if k >= job.step:
+                            edge_operation_to_buffer[0].append(operation.id)
+                            edge_operation_to_buffer[1].append(location.local_id)
+                            edge_buffer_to_operation[0].append(location.local_id)
+                            edge_buffer_to_operation[1].append(operation.id)
+
+                    else:
+                        if k == len(job.operations) - 1:
+                            edge_operation_to_output[0].append(operation.id)
+                            edge_operation_to_output[1].append(location.local_id)
+                            edge_output_to_operation[0].append(location.local_id)
+                            edge_output_to_operation[1].append(operation.id)
+
+                # if k < job.step:
+                #     if ((self.monitor.queue_for_crane_scheduling.id == job.id)
+                #             and (k == len(job.operations) - 1)):
+                #         for i in range(self.num_cranes + 1):
+                #             edge_operation_to_crane[0].append(operation.id)
+                #             edge_operation_to_crane[1].append(i)
+                #             edge_crane_to_operation[0].append(i)
+                #             edge_crane_to_operation[1].append(operation.id)
+                if k == job.step:
+                    if ((operation.id in self.monitor.operations_loading
+                          or operation.id in self.monitor.operations_unloading)):
+                        crane_name = operation.allocated_crane
+                        if crane_name is None:
+                            edge_operation_to_crane[0].append(operation.id)
+                            edge_operation_to_crane[1].append(self.num_cranes)
+                            edge_crane_to_operation[0].append(self.num_cranes)
+                            edge_crane_to_operation[1].append(operation.id)
+                        else:
+                            crane = self.resources[crane_name]
+                            edge_operation_to_crane[0].append(operation.id)
+                            edge_operation_to_crane[1].append(crane.id)
+                            edge_crane_to_operation[0].append(crane.id)
+                            edge_crane_to_operation[1].append(operation.id)
+                    else:
+                        for i in range(self.num_cranes + 1):
+                            edge_operation_to_crane[0].append(operation.id)
+                            edge_operation_to_crane[1].append(i)
+                            edge_crane_to_operation[0].append(i)
+                            edge_crane_to_operation[1].append(operation.id)
+
+        crane_feature = torch.from_numpy(crane_feature).type(torch.float32).to(self.device)
+        machine_feature = torch.from_numpy(machine_feature).type(torch.float32).to(self.device)
+        buffer_feature = torch.from_numpy(buffer_feature).type(torch.float32).to(self.device)
+        output_feature = torch.from_numpy(output_feature).type(torch.float32).to(self.device)
+        operation_feature = torch.from_numpy(operation_feature).type(torch.float32).to(self.device)
+
+        edge_crane_to_crane = torch.from_numpy(np.array(edge_crane_to_crane)).type(torch.long).to(self.device)
+        edge_predecessor = torch.from_numpy(np.array(edge_predecessor)).type(torch.long).to(self.device)
+        edge_successor = torch.from_numpy(np.array(edge_successor)).type(torch.long).to(self.device)
+        edge_crane_to_operation = torch.from_numpy(np.array(edge_crane_to_operation)).type(torch.long).to(self.device)
+        edge_operation_to_crane = torch.from_numpy(np.array(edge_operation_to_crane)).type(torch.long).to(self.device)
+        edge_operation_to_machine = torch.from_numpy(np.array(edge_operation_to_machine)).type(torch.long).to(self.device)
+        edge_machine_to_operation = torch.from_numpy(np.array(edge_machine_to_operation)).type(torch.long).to(self.device)
+        edge_operation_to_buffer = torch.from_numpy(np.array(edge_operation_to_buffer)).type(torch.long).to(self.device)
+        edge_buffer_to_operation = torch.from_numpy(np.array(edge_buffer_to_operation)).type(torch.long).to(self.device)
+        edge_operation_to_output = torch.from_numpy(np.array(edge_operation_to_output)).type(torch.long).to(self.device)
+        edge_output_to_operation = torch.from_numpy(np.array(edge_output_to_operation)).type(torch.long).to(self.device)
+
+        graph_feature = HeteroData()
+        graph_feature["crane"].x = crane_feature
+        graph_feature["machine"].x = machine_feature
+        graph_feature["buffer"].x = buffer_feature
+        graph_feature["output"].x = output_feature
+        graph_feature["operation"].x = operation_feature
+        graph_feature["crane", "crane_to_crane", "crane"].edge_index = edge_crane_to_crane
+        graph_feature["operation", "predecessor", "operation"].edge_index = edge_predecessor
+        graph_feature["operation", "successor", "operation"].edge_index = edge_successor
+        graph_feature["crane", "crane_to_operation", "operation"].edge_index = edge_crane_to_operation
+        graph_feature["operation", "operation_to_crane", "crane"].edge_index = edge_operation_to_crane
+        graph_feature["machine", "machine_to_operation", "operation"].edge_index = edge_machine_to_operation
+        graph_feature["operation", "operation_to_machine", "machine"].edge_index = edge_operation_to_machine
+        graph_feature["buffer", "buffer_to_operation", "operation"].edge_index = edge_buffer_to_operation
+        graph_feature["operation", "operation_to_buffer", "buffer"].edge_index = edge_operation_to_buffer
+        graph_feature["output", "output_to_operation", "operation"].edge_index = edge_output_to_operation
+        graph_feature["operation", "operation_to_output", "output"].edge_index = edge_operation_to_output
+
+        state = State()
+        state.update(graph_feature=graph_feature)
+
+        return state
+
+    def _get_local_state(self):
         if self.scheduling_mode == "machine":
             machine_scheduling_algorithm = self.algorithm[0]
 
@@ -520,10 +871,7 @@ class Factory:
                 edge_buffer_to_operation, edge_operation_to_buffer = [[], []], [[], []]
                 edge_output_to_operation, edge_operation_to_output = [[], []], [[], []]
 
-                proctime_remaining = np.zeros((self.num_operations, self.num_machines))
                 proctime_current = np.zeros((self.num_jobs, self.num_machines))
-
-                proctime_remaining_mask = np.zeros(self.num_operations, dtype=bool)
                 proctime_current_mask = np.zeros(self.num_jobs, dtype=bool)
 
                 # Operation Feature
@@ -540,12 +888,6 @@ class Factory:
                     else:
                         current_operations[job.id] = job.operations[-1].id
 
-                    # 작업되지 않은 operation들의 작업시간 정보
-                    for operation in job.operations[job.step:]:
-                        proctime_remaining[operation.id, :] \
-                            = (operation.options - self.proctime_min) / (self.proctime_max - self.proctime_min)
-                        proctime_remaining_mask[operation.id] = True
-
                     # 의사결정이 필요한 job에 대하여, 해당 job의 다음 operation 작업시간 정보
                     if j in self.monitor.queue_for_machine_scheduling.keys():
                         if job.step < len(job.operations):
@@ -558,19 +900,11 @@ class Factory:
                     job_proctime = [(np.mean(operation.options[operation.options != 0] - self.proctime_min)
                                      / (self.proctime_max - self.proctime_min))
                                     for operation in job.operations]
-                    # job에 수행되는 모든 operation의 평균 작업시간 총합
-                    job_proctime_sum = np.sum(job_proctime)
-
-                    if job.step < len(job.operations):
-                        job_remaining_proctime_sum = np.sum([job_proctime[job.step:]])
-                    else:
-                        job_remaining_proctime_sum = 0
 
                     for k, operation in enumerate(job.operations):
                         eligible_options = ((operation.options[operation.options != 0] - self.proctime_min)
                                             / (self.proctime_max - self.proctime_min))
 
-                        # Operation Feature
                         if (operation.id in self.monitor.operations_working.keys()
                                 or operation.id in self.monitor.operations_waiting.keys()):
                             f0 = [0, 1, 0]
@@ -589,15 +923,9 @@ class Factory:
                         operation_feature[operation.id, 3:] = [f1, f2, f3, f4, f5]
 
                 # Location Feature
-                proctime_remaining = proctime_remaining[proctime_remaining_mask]
                 proctime_current = proctime_current[proctime_current_mask]
-
-                proctime_remaining_mean = np.array([np.mean(temp[temp >= 0]) for temp in proctime_remaining])
                 proctime_current_mean = np.array([np.mean(temp[temp >= 0]) for temp in proctime_current])
-
-                proctime_remaining_sum = np.sum(proctime_remaining_mean)  # 작업이 미완료된 operation의 평균 작업시간 합
                 proctime_current_sum = np.sum(proctime_current_mean)  # 스케줄링 대상 operation의 평균 작업시간 합
-
                 proctime_compatible = np.copy(proctime_current)
 
                 available_time_list = []
@@ -621,8 +949,6 @@ class Factory:
                             if fully_occupied:
                                 proctime_compatible[:, location.local_id] = -1
 
-                            eligible_proctime_remaining = proctime_remaining[:, location.local_id][
-                                proctime_remaining[:, location.local_id] >= 0]
                             eligible_proctime_current = proctime_current[:, location.local_id][
                                 proctime_current[:, location.local_id] >= 0]
 
@@ -692,13 +1018,6 @@ class Factory:
 
                                     proctime_compatible_copy = copy.copy(proctime_compatible)
                                     proctime_compatible_copy[:, location.local_id] = -1
-                                    # num_compatible_pairs = len(proctime_compatible[proctime_compatible >= 0])
-                                    # num_compatible_pairs_updated \
-                                    #     = len(proctime_compatible_copy[proctime_compatible_copy >= 0])
-                                    # min_proctime_compatible \
-                                    #     = np.array([np.min(temp[temp >= 0]) for temp in proctime_compatible])
-                                    # min_proctime_compatible_updated \
-                                    #     = np.array([np.min(temp[temp >= 0]) for temp in proctime_compatible_copy])
 
                                     f3 = proctime
                                     f4 = proctime / np.max(options) if np.max(options) > 0 else 1
@@ -855,32 +1174,11 @@ class Factory:
             crane_scheduling_algorithm = self.algorithm[1]
 
             if crane_scheduling_algorithm == "RL":
-                # crane_feature = np.zeros((self.num_cranes + 1, self.ct_crane_feature_dim))
-                # location_feature = np.zeros((self.num_locations, self.ct_location_feature_dim))
-                # pairwise_feature = np.zeros((self.num_locations,
-                #                              self.num_cranes + 1,
-                #                              self.ct_pairwise_feature_dim))
-
-                # crane_feature = np.zeros((self.num_cranes + 1, self.ct_crane_feature_dim))
-                # job_feature = np.zeros((self.num_jobs, self.ct_job_feature_dim))
-                # pairwise_feature = np.zeros((self.num_jobs,
-                #                              self.num_cranes + 1,
-                #                              self.ct_pairwise_feature_dim))
-
                 crane_feature = np.zeros((self.num_cranes + 1, self.ct_crane_feature_dim))
                 operation_feature = np.zeros((self.num_operations, self.ct_operation_feature_dim))
                 pairwise_feature = np.zeros((self.num_operations,
                                              self.num_cranes + 1,
                                              self.ct_pairwise_feature_dim))
-
-                current_operations = np.zeros(self.num_jobs)
-
-                # edge_crane_to_crane = [[], []]
-                # # edge_location_to_location = [[], []]
-                # edge_crane_to_location, edge_location_to_crane = [[], []], [[], []]
-
-                # edge_crane_to_crane = [[], []]
-                # edge_crane_to_job, edge_job_to_crane = [[], []], [[], []]
 
                 edge_crane_to_crane = [[], []]
                 edge_predecessor, edge_successor = [[], []], [[], []]
@@ -972,97 +1270,10 @@ class Factory:
                 f1 = current_coord[0] / self.x_max if self.x_max != 0 else 0
                 f2 = current_coord[1] / self.y_max if self.y_max != 0 else 0
 
-                crane_feature[2, :] = [f1, f2, -1, -1, 0, 0]
+                crane_feature[self.num_cranes, :] = [f1, f2, -1, -1, 0, 0]
 
                 crane_feature[:, 5] = crane_feature[:, 5] / np.max(crane_feature[:, 5]) \
                     if np.max(crane_feature[:, 5]) > 0.0 else 0.0
-
-                # # Location Feature
-                # current_location = self.monitor.queue_for_crane_scheduling.current_location
-                # target_location = self.monitor.queue_for_crane_scheduling.next_location
-                # for location in self.locations.values():
-                #     xcoord, ycoord = location.coord
-                #     f1 = xcoord / self.x_max if self.x_max != 0 else 0
-                #     f2 = ycoord / self.y_max if self.y_max != 0 else 0
-                #
-                #     if location.name == current_location:
-                #         target_coord = self.locations[target_location].coord
-                #         f3 = target_coord[0] / self.x_max if self.x_max != 0 else 0
-                #         f4 = target_coord[1] / self.y_max if self.y_max != 0 else 0
-                #     else:
-                #         f3 = -1
-                #         f4 = -1
-                #
-                #     f5 = last_visited_time[location.name]["get"]
-                #     f6 = last_visited_time[location.name]["put"]
-                #
-                #     location_feature[location.global_id, :4] = [f1, f2, f3, f4]
-                #     location_feature[location.global_id, 4:6] = f5
-                #     location_feature[location.global_id, 6:8] = f6
-                #
-                # denominator = np.max(location_feature[:, 4:])
-                # if denominator != 0:
-                #     location_feature[:, 4:] = location_feature[:, 4:] / denominator
-
-                # # Job Feature
-                # for j in self.df_operations["Job_Index"].unique():
-                #     if j in self.monitor.jobs_before_system.keys():
-                #         job = self.monitor.jobs_before_system[j]
-                #     elif j in self.monitor.jobs_in_system.keys():
-                #         job = self.monitor.jobs_in_system[j]
-                #     else:
-                #         job = self.monitor.jobs_after_system[j]
-                #
-                #     operation = job.get_current_operation()
-                #     if operation is None:
-                #         operation = job.operations[-1]
-                #     if operation.id in self.monitor.operations_loading.keys():
-                #         f0 = [1, 0, 0]
-                #     elif operation.id in self.monitor.operations_unloading.keys():
-                #         f0 = [0, 1, 0]
-                #         for crane in self.resources.values():
-                #             if crane.current_working_order is not None:
-                #                 if operation.id == crane.current_working_order[0]:
-                #                     current_coord = crane.current_coord
-                #     else:
-                #         f0 = [0, 0, 1]
-                #
-                #     if j in self.monitor.jobs_in_system.keys():
-                #         if job_in_transportation[j]:
-                #             crane = self.resources[self.resource_id_to_name[crane_allocation[j]]]
-                #             current_coord = crane.current_coord
-                #             next_coord = self.locations[job.next_location].coord
-                #         else:
-                #             current_coord = self.locations[job.current_location].coord
-                #             if job.next_location is not None:
-                #                 next_coord = self.locations[job.next_location].coord
-                #             else:
-                #                 next_coord = None
-                #     else:
-                #         current_coord = None
-                #         next_coord = None
-                #
-                #     if current_coord is not None:
-                #         f1 = current_coord[0] / self.x_max if self.x_max != 0 else 0
-                #         f2 = current_coord[1] / self.y_max if self.y_max != 0 else 0
-                #     else:
-                #         f1 = -1.0
-                #         f2 = -1.0
-                #
-                #     if next_coord is not None:
-                #         f3 = next_coord[0] / self.x_max if self.x_max != 0 else 0
-                #         f4 = next_coord[1] / self.y_max if self.y_max != 0 else 0
-                #     else:
-                #         f3 = -1.0
-                #         f4 = -1.0
-                #
-                #     f5 = expected_arrival_time[j]
-                #
-                #     job_feature[job.id, :3] = f0
-                #     job_feature[job.id, 3:] = [f1, f2, f3, f4, f5]
-                #
-                # job_feature[:, 7] = job_feature[:, 7] / np.max(job_feature[:, 7]) \
-                #     if np.max(job_feature[:, 7]) > 0.0 else 0.0
 
                 # Operation Feature
                 for j in self.df_operations["Job_Index"].unique():
@@ -1072,11 +1283,6 @@ class Factory:
                         job = self.monitor.jobs_in_system[j]
                     else:
                         job = self.monitor.jobs_after_system[j]
-
-                    if job.step < len(job.operations):
-                        current_operations[job.id] = job.operations[job.step].id
-                    else:
-                        current_operations[job.id] = job.operations[-1].id
 
                     for k, operation in enumerate(job.operations):
                         if operation.id in self.monitor.operations_loading.keys():
@@ -1121,7 +1327,6 @@ class Factory:
                 if operation is None:
                     operation = job.operations[-1]
                 current_location = self.monitor.queue_for_crane_scheduling.current_location
-                # current_location_id = self.locations[current_location].global_id
                 current_coord = self.locations[current_location].coord
                 for crane in self.resources.values():
                     if len(crane.queue) > 0:
@@ -1140,8 +1345,6 @@ class Factory:
                     f1 = (crane_coord[0] - current_coord[0]) / self.x_max if self.x_max != 0 else 0
                     f2 = (crane_coord[1] - current_coord[1]) / self.y_max if self.y_max != 0 else 0
 
-                    # pairwise_feature[current_location_id, crane.id, :] = [f1, f2]
-                    # pairwise_feature[job.id, crane.id, :] = [f1, f2]
                     pairwise_feature[operation.id, crane.id, :] = [f1, f2]
 
                 # Edge Construction
@@ -1151,61 +1354,6 @@ class Factory:
                             edge_crane_to_crane[0].append(crane_1.id)
                             edge_crane_to_crane[1].append(crane_2.id)
 
-                # for crane in self.resources.values():
-                #     location_seq = []
-                #     if crane.current_working_order is not None:
-                #         if crane.status == "loading":
-                #             location_seq.append(crane.current_working_order[1])
-                #         location_seq.append(crane.current_working_order[2])
-                #     for working_order in crane.queue:
-                #         location_seq.append(working_order[1])
-                #         location_seq.append(working_order[2])
-                #
-                #     for i in range(len(location_seq) - 1):
-                #         current_location = self.locations[location_seq[i]]
-                #         next_location = self.locations[location_seq[i + 1]]
-                #         edge_location_to_location[0].append(current_location.global_id)
-                #         edge_location_to_location[1].append(next_location.global_id)
-
-                # for crane in self.resources.values():
-                #     for location in self.locations.values():
-                #         if location.category == 3:
-                #             continue
-                #         else:
-                #             edge_crane_to_location[0].append(crane.id)
-                #             edge_crane_to_location[1].append(location.global_id)
-                #
-                #             edge_location_to_crane[0].append(location.global_id)
-                #             edge_location_to_crane[1].append(crane.id)
-                #
-                # for location in self.locations.values():
-                #     if location.category == 3:
-                #         continue
-                #     else:
-                #         edge_crane_to_location[0].append(self.num_cranes)
-                #         edge_crane_to_location[1].append(location.global_id)
-                #
-                #         edge_location_to_crane[0].append(location.global_id)
-                #         edge_location_to_crane[1].append(self.num_cranes)
-
-                # for j in self.df_operations["Job_Index"].unique():
-                #     crane_id = crane_allocation[j]
-                #     if crane_id != -1:
-                #         edge_crane_to_job[0].append(crane_id)
-                #         edge_crane_to_job[1].append(j)
-                #
-                #         edge_job_to_crane[0].append(j)
-                #         edge_job_to_crane[1].append(crane_id)
-                #
-                # job = self.monitor.queue_for_crane_scheduling
-                # for crane_id in range(self.num_cranes + 1):
-                #     edge_crane_to_job[0].append(crane_id)
-                #     edge_crane_to_job[1].append(job.id)
-                #
-                #     edge_job_to_crane[0].append(job.id)
-                #     edge_job_to_crane[1].append(crane_id)
-
-                # Edge Construction
                 for j in self.df_operations["Job_Index"].unique():
                     if j in self.monitor.jobs_before_system.keys():
                         job = self.monitor.jobs_before_system[j]
@@ -1230,19 +1378,19 @@ class Factory:
                                     edge_crane_to_operation[0].append(i)
                                     edge_crane_to_operation[1].append(operation.id)
                             else:
-                                pass
-                                # crane_name = operation.allocated_crane
-                                # if crane_name is None:
-                                #     edge_operation_to_crane[0].append(operation.id)
-                                #     edge_operation_to_crane[1].append(self.num_cranes)
-                                #     edge_crane_to_operation[0].append(self.num_cranes)
-                                #     edge_crane_to_operation[1].append(operation.id)
-                                # else:
-                                #     crane = self.resources[crane_name]
-                                #     edge_operation_to_crane[0].append(operation.id)
-                                #     edge_operation_to_crane[1].append(crane.id)
-                                #     edge_crane_to_operation[0].append(crane.id)
-                                #     edge_crane_to_operation[1].append(operation.id)
+                                # pass
+                                crane_name = operation.allocated_crane
+                                if crane_name is None:
+                                    edge_operation_to_crane[0].append(operation.id)
+                                    edge_operation_to_crane[1].append(self.num_cranes)
+                                    edge_crane_to_operation[0].append(self.num_cranes)
+                                    edge_crane_to_operation[1].append(operation.id)
+                                else:
+                                    crane = self.resources[crane_name]
+                                    edge_operation_to_crane[0].append(operation.id)
+                                    edge_operation_to_crane[1].append(crane.id)
+                                    edge_crane_to_operation[0].append(crane.id)
+                                    edge_crane_to_operation[1].append(operation.id)
                         elif k == job.step:
                             if (((operation.id in self.monitor.operations_loading
                                     or operation.id in self.monitor.operations_unloading))
@@ -1266,44 +1414,12 @@ class Factory:
                                     edge_crane_to_operation[0].append(i)
                                     edge_crane_to_operation[1].append(operation.id)
                         else:
-                            pass
-                            # for i in range(self.num_cranes + 1):
-                            #     edge_operation_to_crane[0].append(operation.id)
-                            #     edge_operation_to_crane[1].append(i)
-                            #     edge_crane_to_operation[0].append(i)
-                            #     edge_crane_to_operation[1].append(operation.id)
-
-                # crane_feature = torch.from_numpy(crane_feature).type(torch.float32).to(self.device)
-                # location_feature = torch.from_numpy(location_feature).type(torch.float32).to(self.device)
-                #
-                # edge_crane_to_crane = torch.from_numpy(np.array(edge_crane_to_crane)).type(torch.long).to(self.device)
-                # # edge_location_to_location = torch.from_numpy(np.array(edge_location_to_location)).type(torch.long).to(self.device)
-                # edge_crane_to_location = torch.from_numpy(np.array(edge_crane_to_location)).type(torch.long).to(self.device)
-                # edge_location_to_crane = torch.from_numpy(np.array(edge_location_to_crane)).type(torch.long).to(self.device)
-                #
-                # graph_feature = HeteroData()
-                # graph_feature["crane"].x = crane_feature
-                # graph_feature["location"].x = location_feature
-                # graph_feature["crane", "crane_to_crane", "crane"].edge_index = edge_crane_to_crane
-                # # graph_feature["location", "location_to_location", "location"].edge_index = edge_location_to_location
-                # graph_feature["crane", "crane_to_location", "location"].edge_index = edge_crane_to_location
-                # graph_feature["location", "location_to_crane", "crane"].edge_index = edge_location_to_crane
-
-                # crane_feature = torch.from_numpy(crane_feature).type(torch.float32).to(self.device)
-                # job_feature = torch.from_numpy(job_feature).type(torch.float32).to(self.device)
-                #
-                # edge_crane_to_crane = torch.from_numpy(np.array(edge_crane_to_crane)).type(torch.long).to(self.device)
-                # edge_crane_to_job = torch.from_numpy(np.array(edge_crane_to_job)).type(torch.long).to(self.device)
-                # edge_job_to_crane = torch.from_numpy(np.array(edge_job_to_crane)).type(torch.long).to(self.device)
-                #
-                # graph_feature = HeteroData()
-                # graph_feature["crane"].x = crane_feature
-                # graph_feature["job"].x = job_feature
-                # graph_feature["crane", "crane_to_crane", "crane"].edge_index = edge_crane_to_crane
-                # graph_feature["crane", "crane_to_job", "job"].edge_index = edge_crane_to_job
-                # graph_feature["job", "job_to_crane", "crane"].edge_index = edge_job_to_crane
-                #
-                # pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
+                            # pass
+                            for i in range(self.num_cranes + 1):
+                                edge_operation_to_crane[0].append(operation.id)
+                                edge_operation_to_crane[1].append(i)
+                                edge_crane_to_operation[0].append(i)
+                                edge_crane_to_operation[1].append(operation.id)
 
                 crane_feature = torch.from_numpy(crane_feature).type(torch.float32).to(self.device)
                 operation_feature = torch.from_numpy(operation_feature).type(torch.float32).to(self.device)
@@ -1326,8 +1442,6 @@ class Factory:
                 pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
 
             else:
-                # num_rows = self.num_locations
-                # num_rows = self.num_jobs
                 num_rows = self.num_operations
                 num_columns = self.num_cranes + 1
 
@@ -1337,11 +1451,8 @@ class Factory:
                 operation = job.get_current_operation()
                 if operation is None:
                     operation = job.operations[-1]
-                location_id = self.locations[job.current_location].global_id
                 location_coord = self.locations[job.current_location].coord
 
-                # priority_idx[location_id, self.num_cranes] = 1.0
-                # priority_idx[job.id, self.num_cranes] = 1.0
                 priority_idx[operation.id, self.num_cranes] = 1.0
 
                 if crane_scheduling_algorithm == "SETT":
@@ -1358,50 +1469,32 @@ class Factory:
                         y_travel_time = abs(location_coord[1] - crane_coord[1]) / crane.y_velocity
                         empty_travel_time = max(x_travel_time, y_travel_time)
 
-                        # priority_idx[location_id, crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1.0
-                        # priority_idx[job.id, crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1.0
                         priority_idx[operation.id, crane.id] = 1 / empty_travel_time if empty_travel_time > 0 else 1.0
 
                 elif crane_scheduling_algorithm == "TDD":
                     for crane in self.resources.values():
                         if crane.id == 0:
                             if self.locations[job.current_location].coord[0] <= self.x_max / 2:
-                                # priority_idx[location_id, crane.id] = 1.0
-                                # priority_idx[job.id, crane.id] = 1.0
                                 priority_idx[operation.id, crane.id] = 1.0
                             else:
-                                # priority_idx[location_id, crane.id] = 0.5
-                                # priority_idx[job.id, crane.id] = 0.5
                                 priority_idx[operation.id, crane.id] = 0.5
                         else:
                             if self.locations[job.current_location].coord[0] >= self.x_max / 2:
-                                # priority_idx[location_id, crane.id] = 1.0
-                                # priority_idx[job.id, crane.id] = 1.0
                                 priority_idx[operation.id, crane.id] = 1.0
                             else:
-                                # priority_idx[location_id, crane.id] = 0.5
-                                # priority_idx[job.id, crane.id] = 0.5
                                 priority_idx[operation.id, crane.id] = 0.5
 
                 elif crane_scheduling_algorithm == "TDT":
                     for crane in self.resources.values():
                         if crane.id == 0:
                             if self.locations[job.next_location].coord[0] <= self.x_max / 2:
-                                # priority_idx[location_id, crane.id] = 1.0
-                                # priority_idx[job.id, crane.id] = 1.0
                                 priority_idx[operation.id, crane.id] = 1.0
                             else:
-                                # priority_idx[location_id, crane.id] = 0.5
-                                # priority_idx[job.id, crane.id] = 0.5
                                 priority_idx[operation.id, crane.id] = 0.5
                         else:
                             if self.locations[job.next_location].coord[0] >= self.x_max / 2:
-                                # priority_idx[location_id, crane.id] = 1.0
-                                # priority_idx[job.id, crane.id] = 1.0
                                 priority_idx[operation.id, crane.id] = 1.0
                             else:
-                                # priority_idx[location_id, crane.id] = 0.5
-                                # priority_idx[job.id, crane.id] = 0.5
                                 priority_idx[operation.id, crane.id] = 0.5
 
                 # elif crane_scheduling_algorithm == "LOR":
@@ -1441,8 +1534,6 @@ class Factory:
                 #         priority_idx[location_id, crane.id] = 1 / remaining_work if remaining_work > 0 else 1.0
 
                 elif crane_scheduling_algorithm == "RAND":
-                    # priority_idx[location_id, :] = 1.0
-                    # priority_idx[job.id, :] = 1.0
                     priority_idx[operation.id, :] = 1.0
 
         if self.scheduling_mode == "machine":
@@ -1631,37 +1722,46 @@ if __name__ == "__main__":
     from Agent.FlexibleJobShop.heuristic import FJSPHeuristic
     from Agent.CraneTransportation.heuristic import CTHeuristic
 
-    algorithm = ("RL", "SETT")
+    algorithm = ("SPT", "SETT")
 
     fjsp_agent = FJSPHeuristic(algorithm[0])
     ct_agent = CTHeuristic(algorithm[1])
 
     # data_src = DataGenerator()
-    data_src = "../input/new_validation/10-5/instance-1.xlsx"
-    env = Factory(data_src, algorithm=algorithm, use_recording=True)
+    data_src = "../input/case1/validation/10-5/instance-1.xlsx"
+    env = Factory(data_src, algorithm=algorithm, use_recording=True, return_global_state=True)
 
     step = 0
+    episode_reward = 0
     random.seed(42)
-    state = env.reset()
+    fjsp_local_state, global_state = env.reset()
 
     while True:
-        if env.scheduling_mode == "machine":
-            # action = fjsp_agent.act(state)
-            mask = state.mask.transpose(0, 1).flatten()
-            candidates = np.where(mask == True)[0]
-            action = np.random.choice(candidates)
+        mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
+
+        if mode == "fjsp":
+            fjsp_action = fjsp_agent.act(fjsp_local_state)
+            next_ct_local_state, fjsp_reward, done = env.step(fjsp_action)
+            episode_reward += fjsp_reward
+            # mask = state.mask.transpose(0, 1).flatten()
+            # candidates = np.where(mask == True)[0]
+            # action = np.random.choice(candidates)
         else:
-            action = ct_agent.act(state)
+            ct_action = ct_agent.act(ct_local_state)
+            next_fjsp_local_state, next_global_state, ct_reward, done = env.step(ct_action)
+            episode_reward += fjsp_reward
             # mask = state.mask
             # candidates = np.where(mask == True)[0]
             # action = np.random.choice(candidates)
 
-        next_state, reward, done = env.step(action)
+        if mode == "fjsp":
+            ct_local_state = next_ct_local_state
+        else:
+            fjsp_local_state = next_fjsp_local_state
 
-        state = next_state
         step += 1
 
-        print(step, reward)
+        print(step, episode_reward)
 
         if done:
             break
