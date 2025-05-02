@@ -29,10 +29,10 @@ class DataGenerator:
                  division=(0, 1, 1, 2, 1, 2, 1, 1, 3)
                  ):
 
-        # assert len([temp for temp in division if temp == 0]) == num_inputs
-        # assert len([temp for temp in division if temp == 1]) == num_machines
-        # assert len([temp for temp in division if temp == 2]) == num_buffers
-        # assert len([temp for temp in division if temp == 3]) == num_outputs
+        assert int(len([temp for temp in division if temp == 0]) * num_rows) == num_inputs
+        assert int(len([temp for temp in division if temp == 1]) * num_rows) == num_machines
+        assert int(len([temp for temp in division if temp == 2]) * num_rows) == num_buffers
+        assert int(len([temp for temp in division if temp == 3]) * num_rows) == num_outputs
 
         self.num_inputs = num_inputs
         self.num_outputs = num_outputs
@@ -157,11 +157,19 @@ if __name__ == '__main__':
     import os
     import json
 
+    # 5 machines -> iat: 7.3
+    # 10 machines -> iat: 2.2
+    # 15 machines -> iat: 1.0
+
+    # "division": (0, 2, 1, 1, 2, 1, 2, 1, 1, 2, 3) -> case 1
+    # "division": (2, 1, 0, 1, 2, 1, 2, 1, 3, 1, 2) -> case 2
+    # "division": (2, 1, 1, 2, 0, 1, 3, 2, 1, 1, 2) -> case 3
+
     setting = {
         "num_inputs": 1,
         "num_outputs": 1,
         "num_machines": 5,
-        "num_buffers": 2,
+        "num_buffers": 4,
         "num_jobs": 10,
         "num_options_min": 1,
         "num_options_max": 5,
@@ -169,7 +177,7 @@ if __name__ == '__main__':
         "num_operations_max": 6,
         "proctime_min": 1,
         "proctime_max": 20,
-        "inter_arrival_time": 4,
+        "inter_arrival_time": 7.3,
 
         "num_cranes": 2,
         "safety_margin": 2,
@@ -179,10 +187,10 @@ if __name__ == '__main__':
         "num_rows": 1,
         "x_spacing": 1,
         "y_spacing": 1,
-        "division": (0, 1, 1, 2, 1, 2, 1, 1, 3)
+        "division": (0, 2, 1, 1, 2, 1, 2, 1, 1, 2, 3)
     }
 
-    file_dir = "../input/validation/%d-%d/" % (setting["num_jobs"], setting["num_machines"])
+    file_dir = "../input/case1/validation/%d-%d/" % (setting["num_jobs"], setting["num_machines"])
     if not os.path.exists(file_dir):
         os.makedirs(file_dir)
 
