@@ -556,7 +556,7 @@ class Factory:
                 f1 = np.min(eligible_options)
                 f2 = np.mean(eligible_options)
                 f3 = np.max(eligible_options)
-                f4 = np.sum(job_proctime[k:])  # / (len(job.operations) - k)
+                f4 = np.sum(job_proctime[k:])  / (len(job.operations) - k)
                 f5 = len(eligible_options) / self.num_machines
 
                 if operation.id in self.monitor.operations_loading.keys():
@@ -599,8 +599,8 @@ class Factory:
 
         # Location Feature
         proctime_current = proctime_current[proctime_current_mask]
-        proctime_current_mean = np.array([np.mean(temp[temp >= 0]) for temp in proctime_current])
-        proctime_current_sum = np.sum(proctime_current_mean)  # 스케줄링 대상 operation의 평균 작업시간 합
+        proctime_current_max = np.array([np.mean(temp[temp >= 0]) for temp in proctime_current])
+        proctime_current_sum = np.sum(proctime_current_max)  # 스케줄링 대상 operation의 평균 작업시간 합
         proctime_compatible = np.copy(proctime_current)
 
         available_time_list = []
@@ -916,7 +916,7 @@ class Factory:
                         f1 = np.min(eligible_options)
                         f2 = np.mean(eligible_options)
                         f3 = np.max(eligible_options)
-                        f4 = np.sum(job_proctime[k:]) # / (len(job.operations) - k)
+                        f4 = np.sum(job_proctime[k:]) / (len(job.operations) - k)
                         f5 = len(eligible_options) / self.num_machines
 
                         operation_feature[operation.id, :3] = f0
@@ -924,8 +924,8 @@ class Factory:
 
                 # Location Feature
                 proctime_current = proctime_current[proctime_current_mask]
-                proctime_current_mean = np.array([np.mean(temp[temp >= 0]) for temp in proctime_current])
-                proctime_current_sum = np.sum(proctime_current_mean)  # 스케줄링 대상 operation의 평균 작업시간 합
+                proctime_current_max = np.array([np.max(temp[temp >= 0]) for temp in proctime_current])
+                proctime_current_sum = np.sum(proctime_current_max)  # 스케줄링 대상 operation의 평균 작업시간 합
                 proctime_compatible = np.copy(proctime_current)
 
                 available_time_list = []
