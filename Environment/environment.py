@@ -780,15 +780,27 @@ class Factory:
                             edge_output_to_operation[0].append(location.local_id)
                             edge_output_to_operation[1].append(operation.id)
 
-                # if k < job.step:
-                #     if ((self.monitor.queue_for_crane_scheduling.id == job.id)
-                #             and (k == len(job.operations) - 1)):
-                #         for i in range(self.num_cranes + 1):
-                #             edge_operation_to_crane[0].append(operation.id)
-                #             edge_operation_to_crane[1].append(i)
-                #             edge_crane_to_operation[0].append(i)
-                #             edge_crane_to_operation[1].append(operation.id)
-                if k == job.step:
+                if k < job.step:
+                    if (k == len(job.operations) - 1) and (job.id in self.monitor.jobs_in_system.keys()):
+                        for i in range(self.num_cranes + 1):
+                            edge_operation_to_crane[0].append(operation.id)
+                            edge_operation_to_crane[1].append(i)
+                            edge_crane_to_operation[0].append(i)
+                            edge_crane_to_operation[1].append(operation.id)
+                    else:
+                        crane_name = operation.allocated_crane
+                        if crane_name is None:
+                            edge_operation_to_crane[0].append(operation.id)
+                            edge_operation_to_crane[1].append(self.num_cranes)
+                            edge_crane_to_operation[0].append(self.num_cranes)
+                            edge_crane_to_operation[1].append(operation.id)
+                        else:
+                            crane = self.resources[crane_name]
+                            edge_operation_to_crane[0].append(operation.id)
+                            edge_operation_to_crane[1].append(crane.id)
+                            edge_crane_to_operation[0].append(crane.id)
+                            edge_crane_to_operation[1].append(operation.id)
+                elif k == job.step:
                     if ((operation.id in self.monitor.operations_loading
                           or operation.id in self.monitor.operations_unloading)):
                         crane_name = operation.allocated_crane
@@ -809,6 +821,12 @@ class Factory:
                             edge_operation_to_crane[1].append(i)
                             edge_crane_to_operation[0].append(i)
                             edge_crane_to_operation[1].append(operation.id)
+                else:
+                    for i in range(self.num_cranes + 1):
+                        edge_operation_to_crane[0].append(operation.id)
+                        edge_operation_to_crane[1].append(i)
+                        edge_crane_to_operation[0].append(i)
+                        edge_crane_to_operation[1].append(operation.id)
 
         crane_feature = torch.from_numpy(crane_feature).type(torch.float32).to(self.device)
         machine_feature = torch.from_numpy(machine_feature).type(torch.float32).to(self.device)
@@ -1728,7 +1746,7 @@ if __name__ == "__main__":
     ct_agent = CTHeuristic(algorithm[1])
 
     # data_src = DataGenerator()
-    data_src = "../input/case1/validation/10-5/instance-1.xlsx"
+    data_src = "../input/case1/validation/20-10/instance-1.xlsx"
     env = Factory(data_src, algorithm=algorithm, use_recording=True, return_global_state=True)
 
     step = 0
@@ -1749,7 +1767,7 @@ if __name__ == "__main__":
         else:
             ct_action = ct_agent.act(ct_local_state)
             next_fjsp_local_state, next_global_state, ct_reward, done = env.step(ct_action)
-            episode_reward += fjsp_reward
+            episode_reward += ct_reward
             # mask = state.mask
             # candidates = np.where(mask == True)[0]
             # action = np.random.choice(candidates)
