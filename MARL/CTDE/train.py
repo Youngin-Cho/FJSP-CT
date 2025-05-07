@@ -108,6 +108,7 @@ def train(config):
     if not os.path.exists(model_dir):
         os.makedirs(model_dir + 'FJSP/')
         os.makedirs(model_dir + 'CT/')
+        os.makedirs(model_dir + 'Critic/')
 
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
