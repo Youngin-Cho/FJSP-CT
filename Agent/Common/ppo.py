@@ -326,21 +326,21 @@ class Agent:
             avg_loss_ct = 0.0
             avg_loss_critic = 0.0
 
+            td_target = rewards + self.gamma * values[1:] * dones
+            delta = td_target - values[:-1]
+
+            advantage_lst = []
+            advantage = 0.0
+            for delta_t in delta.flip(dims=(0,)):
+                advantage = self.gamma * self.lmbda * advantage + delta_t
+                advantage_lst.append(advantage)
+            advantage_lst.reverse()
+            advantage = torch.concat(advantage_lst).unsqueeze(-1).to(self.device)
+
+            # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
+            #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
+
             for i in range(self.K_epoch):
-                td_target = rewards + self.gamma * values[1:] * dones
-                delta = td_target - values[:-1]
-
-                advantage_lst = []
-                advantage = 0.0
-                for delta_t in delta.flip(dims=(0,)):
-                    advantage = self.gamma * self.lmbda * advantage + delta_t
-                    advantage_lst.append(advantage)
-                advantage_lst.reverse()
-                advantage = torch.concat(advantage_lst).unsqueeze(-1).to(self.device)
-
-                # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
-                #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
-
                 fjsp_new_log_probs, fjsp_dist_entropy \
                     = self.fjsp_network.evaluate(batch_graph_feature=fjsp_graph_features,
                                                  batch_pairwise_feature=fjsp_pairwise_features,
