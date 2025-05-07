@@ -400,6 +400,8 @@ class Crane:
 
                         self.avoiding_time += avoiding_finish - avoiding_start
                 else:
+                    self.safety_coord = (-1.0, -1.0)
+                    
                     if self.monitor.use_recording:
                         self.monitor.record(self.env.now,
                                             event="Move_from",
