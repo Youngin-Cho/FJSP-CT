@@ -42,6 +42,7 @@ class RollOutMemory:
         del self.ct_graph_features[:]
         del self.ct_pairwise_features[:]
         del self.ct_masks[:]
+        del self.global_graph_features[:]
         del self.current_operations[:]
         del self.reorder_idxs[:]
 
