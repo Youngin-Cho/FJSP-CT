@@ -103,7 +103,7 @@ def train(config):
         setting = json.load(f)
 
     model_dir = './output/train/MARL/model/%d-%d/CTDE/' % (setting["num_jobs"], setting["num_machines"])
-    log_dir = './output/train/MARLlog/%d-%d/CTDE/' % (setting["num_jobs"], setting["num_machines"])
+    log_dir = './output/train/MARL/log/%d-%d/CTDE/' % (setting["num_jobs"], setting["num_machines"])
 
     if not os.path.exists(model_dir):
         os.makedirs(model_dir + 'FJSP/')
