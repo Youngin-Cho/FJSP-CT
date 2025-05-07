@@ -15,66 +15,137 @@ class RollOutMemory:
         self.device = device
 
         # input variables
-        self.graph_features = []
-        self.pairwise_features = []
-        self.masks = []
+        self.fjsp_graph_features = []
+        self.fjsp_pairwise_features = []
+        self.fjsp_masks = []
+        self.ct_graph_features = []
+        self.ct_pairwise_features = []
+        self.ct_masks = []
+        self.global_graph_features = []
         self.current_operations = []
         self.reorder_idxs = []
 
         # other variables
-        self.actions = []
+        self.fjsp_actions = []
+        self.fjsp_log_probs = []
+        self.ct_actions = []
+        self.ct_log_probs = []
         self.rewards = []
         self.dones = []
         self.values = []
-        self.log_probs = []
 
     def clear(self):
         # input variables
-        del self.graph_features[:]
-        del self.pairwise_features[:]
-        del self.masks[:]
+        del self.fjsp_graph_features[:]
+        del self.fjsp_pairwise_features[:]
+        del self.fjsp_masks[:]
+        del self.ct_graph_features[:]
+        del self.ct_pairwise_features[:]
+        del self.ct_masks[:]
         del self.current_operations[:]
         del self.reorder_idxs[:]
 
         # other variables
-        del self.actions[:]
+        del self.fjsp_actions[:]
+        del self.fjsp_log_probs[:]
+        del self.ct_actions[:]
+        del self.ct_log_probs[:]
         del self.rewards[:]
         del self.dones[:]
         del self.values[:]
-        del self.log_probs[:]
 
-    def put(self, state, action, reward, done, log_prob, value):
+    def put(self,
+            fjsp_state=None,
+            ct_state=None,
+            global_state=None,
+            fjsp_action=None,
+            fjsp_log_prob=None,
+            ct_action=None,
+            ct_log_prob=None,
+            reward=None,
+            done=None,
+            value=None):
+
         # input variables
-        self.graph_features.append(state.graph_feature)
-        self.pairwise_features.append(state.pairwise_feature.unsqueeze(0))
-        self.masks.append(state.mask.unsqueeze(0))
-        self.current_operations.append(state.current_operations.unsqueeze(0))
-        self.reorder_idxs.append(state.reorder_idx.unsqueeze(0))
+        if fjsp_state is not None:
+            self.fjsp_graph_features.append(fjsp_state.graph_feature)
+            self.fjsp_pairwise_features.append(fjsp_state.pairwise_feature.unsqueeze(0))
+            self.fjsp_masks.append(fjsp_state.mask.unsqueeze(0))
+            self.current_operations.append(fjsp_state.current_operations.unsqueeze(0))
+            self.reorder_idxs.append(fjsp_state.reorder_idx.unsqueeze(0))
+
+        if ct_state is not None:
+            self.ct_graph_features.append(ct_state.graph_feature)
+            self.ct_pairwise_features.append(ct_state.pairwise_feature.unsqueeze(0))
+            self.ct_masks.append(ct_state.mask.unsqueeze(0))
+
+        if global_state is not None:
+            self.global_graph_features.append(global_state.graph_feature)
 
         # other variables
-        self.actions.append([action])
+        if fjsp_action is not None:
+            self.fjsp_actions.append([fjsp_action])
+            self.fjsp_log_probs.append([fjsp_log_prob])
+
+        if ct_action is not None:
+            self.ct_actions.append([ct_action])
+            self.ct_log_probs.append([ct_log_prob])
+
         self.rewards.append([reward])
         self.dones.append([not done])
         self.values.append([value])
-        self.log_probs.append([log_prob])
 
     def get(self, last_value):
         self.values.append([last_value])
 
-        graph_features = Batch.from_data_list(self.graph_features).to(self.device)
-        pairwise_features = torch.concat(self.pairwise_features).to(self.device)
-        masks = torch.concat(self.masks).to(self.device)
-        current_operations = torch.concat(self.current_operations).to(self.device)
-        reorder_idxs = torch.concat(self.reorder_idxs).to(self.device)
+        if len(self.fjsp_graph_features) > 0:
+            fjsp_graph_features = Batch.from_data_list(self.fjsp_graph_features).to(self.device)
+            fjsp_pairwise_features = torch.concat(self.fjsp_pairwise_features).to(self.device)
+            fjsp_masks = torch.concat(self.fjsp_masks).to(self.device)
+            current_operations = torch.concat(self.current_operations).to(self.device)
+            reorder_idxs = torch.concat(self.reorder_idxs).to(self.device)
+        else:
+            fjsp_graph_features = None
+            fjsp_pairwise_features = None
+            fjsp_masks = None
+            current_operations = None
+            reorder_idxs = None
 
-        actions = torch.from_numpy(np.array(self.actions)).type(torch.long).to(self.device)
+        if len(self.ct_graph_features) > 0:
+            ct_graph_features = Batch.from_data_list(self.ct_graph_features).to(self.device)
+            ct_pairwise_features = torch.concat(self.ct_pairwise_features).to(self.device)
+            ct_masks = torch.concat(self.ct_masks).to(self.device)
+        else:
+            ct_graph_features = None
+            ct_pairwise_features = None
+            ct_masks = None
+
+        if len(self.global_graph_features) > 0:
+            global_graph_features = Batch.from_data_list(self.global_graph_features).to(self.device)
+        else:
+            global_graph_features = None
+
+        if len(self.fjsp_actions) > 0:
+            fjsp_actions = torch.from_numpy(np.array(self.fjsp_actions)).type(torch.long).to(self.device)
+            fjsp_log_probs = torch.from_numpy(np.array(self.fjsp_log_probs)).type(torch.float32).to(self.device)
+        else:
+            fjsp_actions = None
+            fjsp_log_probs = None
+
+        if len(self.ct_actions) > 0:
+            ct_actions = torch.from_numpy(np.array(self.ct_actions)).type(torch.long).to(self.device)
+            ct_log_probs = torch.from_numpy(np.array(self.ct_log_probs)).type(torch.float32).to(self.device)
+        else:
+            ct_actions = None
+            ct_log_probs = None
+
         rewards = torch.from_numpy(np.array(self.rewards)).type(torch.float32).to(self.device)
         dones = torch.from_numpy(np.array(self.dones)).type(torch.float32).to(self.device)
         values = torch.from_numpy(np.array(self.values)).type(torch.float32).to(self.device)
-        log_probs = torch.from_numpy(np.array(self.log_probs)).type(torch.float32).to(self.device)
 
-        return (graph_features, pairwise_features, masks, current_operations, reorder_idxs,
-                actions, rewards, values, dones, log_probs)
+        return (fjsp_graph_features, fjsp_pairwise_features, fjsp_masks, fjsp_actions, fjsp_log_probs,
+                ct_graph_features, ct_pairwise_features, ct_masks, ct_actions, ct_log_probs, global_graph_features,
+                rewards, values, dones, current_operations, reorder_idxs)
 
 
 class Agent:
@@ -120,10 +191,10 @@ class Agent:
         self.use_value_clipping = use_value_clipping
         self.device = device
 
+        self.memory = RollOutMemory(device)
         if learning_approach == "CL":
             pass
         elif learning_approach == "CTDE":
-            self.fjsp_memory = RollOutMemory(device)
             self.fjsp_network = FJSPScheduler(meta_data=fjsp_meta_data,
                                               state_size=fjsp_state_size,
                                               num_nodes=fjsp_num_nodes,
@@ -136,7 +207,6 @@ class Agent:
             self.fjsp_optimizer = optim.Adam(self.fjsp_network.parameters(), lr=lr)
             self.fjsp_scheduler = StepLR(optimizer=self.fjsp_optimizer, step_size=lr_step, gamma=lr_decay)
 
-            self.ct_memory = RollOutMemory(device)
             self.ct_network = CTScheduler(meta_data=ct_meta_data,
                                           state_size=ct_state_size,
                                           num_nodes=ct_num_nodes,
@@ -156,44 +226,70 @@ class Agent:
                                               num_heads=num_heads,
                                               num_HGT_layers=num_HGT_layers,
                                               num_MLP_layers=num_critic_layers)
-            self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr)
+            self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr * 5)
             self.critic_scheduler = StepLR(optimizer=self.critic_optimizer, step_size=lr_step, gamma=lr_decay)
         elif learning_approach == "IL":
             pass
         else:
             print("Unknown learning approach")
 
-    def put_sample(self, state, action, reward, done, log_prob, value, scheduling_mode):
+    def put_sample(self,
+                   fjsp_state=None,
+                   ct_state=None,
+                   global_state=None,
+                   fjsp_action=None,
+                   fjsp_log_prob=None,
+                   ct_action=None,
+                   ct_log_prob=None,
+                   reward=None,
+                   done=None,
+                   value=None):
+
         if self.learning_approach == "CL":
             pass
         elif self.learning_approach == "CTDE":
-            if scheduling_mode == "fjsp":
-                self.fjsp_memory.put(state, action, reward, done, log_prob, value)
-            elif scheduling_mode == "ct":
-                self.ct_memory.put(state, action, reward, done, log_prob, value)
-            else:
-                print("Unknown scheduling mode")
+            self.memory.put(fjsp_state=fjsp_state,
+                            ct_state=ct_state,
+                            global_state=global_state,
+                            fjsp_action=fjsp_action,
+                            fjsp_log_prob=fjsp_log_prob,
+                            ct_action=ct_action,
+                            ct_log_prob=ct_log_prob,
+                            reward=reward,
+                            done=done,
+                            value=value)
         else:
             pass
 
-    def get_action(self, state, scheduling_mode):
+    def get_action(self, local_state=None, global_state=None, scheduling_mode="fjsp"):
         if self.learning_approach == "CL":
             pass
         elif self.learning_approach == "CTDE":
             if scheduling_mode == "fjsp":
                 self.fjsp_network.eval()
                 with torch.no_grad():
-                    action, log_prob, value = self.fjsp_network.act(graph_feature=state.graph_feature,
-                                                                    pairwise_feature=state.pairwise_feature,
-                                                                    mask=state.mask,
-                                                                    current_operations=state.current_operations,
-                                                                    reorder_idx=state.reorder_idx)
+                    action, log_prob = self.fjsp_network.act(graph_feature=local_state.graph_feature,
+                                                             pairwise_feature=local_state.pairwise_feature,
+                                                             mask=local_state.mask,
+                                                             current_operations=local_state.current_operations,
+                                                             reorder_idx=local_state.reorder_idx)
+
+                if global_state is not None:
+                    self.global_critic.eval()
+                    with torch.no_grad():
+                        global_graph_feature = Batch.from_data_list([global_state.graph_feature]).to(self.device)
+                        value = self.global_critic.evaluate(batch_graph_feature=global_graph_feature).squeeze().item()
+                else:
+                    value = None
+
             elif scheduling_mode == "ct":
                 self.ct_network.eval()
                 with torch.no_grad():
-                    action, log_prob, value = self.ct_network.act(graph_feature=state.graph_feature,
-                                                                  pairwise_feature=state.pairwise_feature,
-                                                                  mask=state.mask)
+                    action, log_prob = self.ct_network.act(graph_feature=local_state.graph_feature,
+                                                           pairwise_feature=local_state.pairwise_feature,
+                                                           mask=local_state.mask)
+                value = None
+
             else:
                 print("Unknown scheduling mode")
         else:
@@ -207,68 +303,121 @@ class Agent:
         elif self.learning_approach == "CTDE":
             self.fjsp_network.train()
             self.ct_network.train()
+            self.global_critic.train()
 
-            (fjsp_graph_features, fjsp_pairwise_features, fjsp_masks, current_operations, reorder_idxs,
-             fjsp_actions, fjsp_rewards, values, dones, fjsp_log_probs) \
-                = self.fjsp_memory.get(last_value)
+            (fjsp_graph_features,
+             fjsp_pairwise_features,
+             fjsp_masks,
+             fjsp_actions,
+             fjsp_log_probs,
+             ct_graph_features,
+             ct_pairwise_features,
+             ct_masks,
+             ct_actions,
+             ct_log_probs,
+             global_graph_features,
+             rewards,
+             values,
+             dones,
+             current_operations,
+             reorder_idxs) = self.memory.get(last_value)
 
-            (ct_graph_features, ct_pairwise_features, masks,
-             ct_actions, rewards, values, dones, ct_log_probs) \
-                = self.ct_memory.get(last_value)
+            avg_loss_fjsp = 0.0
+            avg_loss_ct = 0.0
+            avg_loss_critic = 0.0
 
-        avg_loss = 0.0
+            for i in range(self.K_epoch):
+                td_target = rewards + self.gamma * values[1:] * dones
+                delta = td_target - values[:-1]
 
-        for i in range(self.K_epoch):
-            td_target = rewards + self.gamma * values[1:] * dones
-            delta = td_target - values[:-1]
+                advantage_lst = []
+                advantage = 0.0
+                for delta_t in delta.flip(dims=(0,)):
+                    advantage = self.gamma * self.lmbda * advantage + delta_t
+                    advantage_lst.append(advantage)
+                advantage_lst.reverse()
+                advantage = torch.concat(advantage_lst).unsqueeze(-1).to(self.device)
 
-            advantage_lst = []
-            advantage = 0.0
-            for delta_t in delta.flip(dims=(0,)):
-                advantage = self.gamma * self.lmbda * advantage + delta_t
-                advantage_lst.append(advantage)
-            advantage_lst.reverse()
-            advantage = torch.concat(advantage_lst).unsqueeze(-1).to(self.device)
+                # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
+                #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
 
-            # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
-            #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
+                fjsp_new_log_probs, fjsp_dist_entropy \
+                    = self.fjsp_network.evaluate(batch_graph_feature=fjsp_graph_features,
+                                                 batch_pairwise_feature=fjsp_pairwise_features,
+                                                 batch_action=fjsp_actions,
+                                                 batch_mask=fjsp_masks,
+                                                 batch_current_operations=current_operations,
+                                                 batch_reorder_idxs=reorder_idxs)
 
-            new_log_probs, new_values, dist_entropy \
-                = self.network.evaluate(batch_graph_feature=graph_features,
-                                        batch_pairwise_feature=pairwise_features,
-                                        batch_action=actions,
-                                        batch_mask=masks,
-                                        batch_current_operations=current_operations,
-                                        batch_reorder_idxs=reorder_idxs)
+                ct_new_log_probs, ct_dist_entropy \
+                    = self.ct_network.evaluate(batch_graph_feature=ct_graph_features,
+                                               batch_pairwise_feature=ct_pairwise_features,
+                                               batch_action=ct_actions,
+                                               batch_mask=ct_masks)
 
-            ratio = torch.exp(new_log_probs - log_probs)
+                fjsp_ratio = torch.exp(fjsp_new_log_probs - fjsp_log_probs)
+                ct_ratio = torch.exp(ct_new_log_probs - ct_log_probs)
 
-            surr1 = ratio * advantage
-            surr2 = torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
-            policy_loss = torch.min(surr1, surr2)
+                fjsp_surr1 = fjsp_ratio * advantage
+                fjsp_surr2 = torch.clamp(fjsp_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
+                fjsp_policy_loss = torch.min(fjsp_surr1, fjsp_surr2)
 
-            if self.use_value_clipping:
-                new_values_clipped = values[:-1] + torch.clamp(new_values - values[:-1], -self.eps_clip, self.eps_clip)
-                value_loss_clipped = F.smooth_l1_loss(new_values_clipped, td_target)
-                value_loss_original = F.smooth_l1_loss(new_values, td_target)
-                value_loss = torch.max(value_loss_original, value_loss_clipped)
-            else:
-                value_loss = F.smooth_l1_loss(new_values, td_target)
+                ct_surr1 = ct_ratio * advantage
+                ct_surr2 = torch.clamp(ct_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
+                ct_policy_loss = torch.min(ct_surr1, ct_surr2)
 
-            loss = - self.P_coeff * policy_loss + self.V_coeff * value_loss - self.E_coeff * dist_entropy
+                new_values = self.global_critic.evaluate(batch_graph_feature=global_graph_features)
 
-            self.optimizer.zero_grad()
-            loss.mean().backward()
-            self.optimizer.step()
+                if self.use_value_clipping:
+                    new_values_clipped = values[:-1] + torch.clamp(new_values - values[:-1], -self.eps_clip, self.eps_clip)
+                    value_loss_clipped = F.smooth_l1_loss(new_values_clipped, td_target)
+                    value_loss_original = F.smooth_l1_loss(new_values, td_target)
+                    value_loss = torch.max(value_loss_original, value_loss_clipped)
+                else:
+                    value_loss = F.smooth_l1_loss(new_values, td_target)
 
-            avg_loss += loss.mean().item()
+                fjsp_loss = - self.P_coeff * fjsp_policy_loss - self.E_coeff * fjsp_dist_entropy
+                ct_loss = - self.P_coeff * ct_policy_loss - self.E_coeff * ct_dist_entropy
+                critic_loss = value_loss
 
-        self.memory.clear()
+                self.fjsp_optimizer.zero_grad()
+                self.ct_optimizer.zero_grad()
+                self.critic_optimizer.zero_grad()
 
-        return avg_loss / self.K_epoch
+                fjsp_loss.mean().backward()
+                ct_loss.mean().backward()
+                critic_loss.mean().backward()
+
+                self.fjsp_optimizer.step()
+                self.ct_optimizer.step()
+                self.critic_optimizer.step()
+
+                avg_loss_fjsp += fjsp_loss.mean().item()
+                avg_loss_ct += ct_loss.mean().item()
+                avg_loss_critic += critic_loss.mean().item()
+
+            self.memory.clear()
+
+            return avg_loss_fjsp / self.K_epoch, avg_loss_ct / self.K_epoch, avg_loss_critic / self.K_epoch
+
+        else:
+            pass
 
     def save_network(self, e, file_dir):
-        torch.save({"episode": e,
-                    "model_state_dict": self.network.state_dict(),
-                    "optimizer_state_dict": self.optimizer.state_dict()},
-                   file_dir + "episode-%d.pt" % e)
+        if self.learning_approach == "CL":
+            pass
+        elif self.learning_approach == "CTDE":
+            torch.save({"episode": e,
+                        "model_state_dict": self.fjsp_network.state_dict(),
+                        "optimizer_state_dict": self.fjsp_optimizer.state_dict()},
+                       file_dir + "FJSP/episode-%d.pt" % e)
+            torch.save({"episode": e,
+                        "model_state_dict": self.ct_network.state_dict(),
+                        "optimizer_state_dict": self.ct_optimizer.state_dict()},
+                       file_dir + "CT/episode-%d.pt" % e)
+            torch.save({"episode": e,
+                        "model_state_dict": self.global_critic.state_dict(),
+                        "optimizer_state_dict": self.critic_optimizer.state_dict()},
+                       file_dir + "Critic/episode-%d.pt" % e)
+        else:
+            pass

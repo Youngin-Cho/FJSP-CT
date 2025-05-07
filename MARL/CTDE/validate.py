@@ -5,7 +5,8 @@ from Environment.environment import Factory
 
 
 def evaluate(agent, val_dir):
-    agent.network.eval()
+    agent.fjsp_network.eval()
+    agent.ct_network.eval()
     device = agent.device
 
     val_paths = os.listdir(val_dir)
@@ -20,7 +21,7 @@ def evaluate(agent, val_dir):
                           device=device,
                           algorithm=("RL", "RL"),
                           use_recording=False,
-                          return_global_state=True)
+                          return_global_state=False)
 
             fjsp_state = env.reset()
 
@@ -28,10 +29,12 @@ def evaluate(agent, val_dir):
                 mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
 
                 if mode == "fjsp":
-                    fjsp_action, _, _ = fjsp_agent.get_action(fjsp_state)
+                    fjsp_action, _, _ = agent.get_action(local_state=fjsp_state,
+                                                         scheduling_mode="fjsp")
                     next_ct_state, reward, done = env.step(fjsp_action)
                 else:
-                    ct_action, _, _ = ct_agent.get_action(ct_state)
+                    ct_action, _, _ = agent.get_action(local_state=ct_state,
+                                                       scheduling_mode="ct")
                     next_fjsp_state, reward, done = env.step(ct_action)
 
                 if mode == "fjsp":
