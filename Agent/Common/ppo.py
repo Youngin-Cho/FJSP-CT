@@ -226,7 +226,7 @@ class Agent:
                                               embed_dim=embed_dim,
                                               num_heads=num_heads,
                                               num_HGT_layers=num_HGT_layers,
-                                              num_MLP_layers=num_critic_layers)
+                                              num_MLP_layers=num_critic_layers).to(device)
             self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr * 5)
             self.critic_scheduler = StepLR(optimizer=self.critic_optimizer, step_size=lr_step, gamma=lr_decay)
         elif learning_approach == "IL":
