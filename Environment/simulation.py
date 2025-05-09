@@ -605,9 +605,9 @@ class Crane:
                 current_coord = self.locations[next_location].coord
 
                 if self.locations[current_location].coord[0] < min_xcoord:
-                    min_xcoord = self.locations[next_location].coord[0]
+                    min_xcoord = self.locations[current_location].coord[0]
                 if self.locations[current_location].coord[0] > max_xcoord:
-                    max_xcoord = self.locations[next_location].coord[0]
+                    max_xcoord = self.locations[current_location].coord[0]
 
                 if self.locations[next_location].coord[0] < min_xcoord:
                     min_xcoord = self.locations[next_location].coord[0]
