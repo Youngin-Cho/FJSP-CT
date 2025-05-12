@@ -193,11 +193,11 @@ def train(config):
     if use_saved_model:
         fjsp_checkpoint = torch.load(fjsp_model_path)
         fjsp_agent.network.load_state_dict(fjsp_checkpoint['model_state_dict'])
-        fjsp_agent.optimizer.load_state_dict(fjsp_checkpoint['optimizer_state_dict'])
+        # fjsp_agent.optimizer.load_state_dict(fjsp_checkpoint['optimizer_state_dict'])
 
         ct_checkpoint = torch.load(ct_model_path)
         ct_agent.network.load_state_dict(ct_checkpoint['model_state_dict'])
-        ct_agent.optimizer.load_state_dict(ct_checkpoint['optimizer_state_dict'])
+        # ct_agent.optimizer.load_state_dict(ct_checkpoint['optimizer_state_dict'])
 
     with open(log_dir + "fjsp_train_log.csv", 'w') as f:
         f.write('episode, reward, loss, lr\n')
