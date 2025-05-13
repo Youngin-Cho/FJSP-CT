@@ -160,7 +160,7 @@ class Factory:
             self.global_buffer_feature_dim = 4
             self.global_output_feature_dim = 4
             self.global_operation_feature_dim = 13
-            self.global_pairwise_feature_dim = 13
+            # self.global_pairwise_feature_dim = 13
 
             self.global_meta_data = (
                 ["crane", "machine", "buffer", "output", "operation"],
@@ -591,10 +591,10 @@ class Factory:
         buffer_feature = np.zeros((self.num_buffers, self.global_buffer_feature_dim))
         output_feature = np.zeros((self.num_outputpoints, self.global_output_feature_dim))
 
-        pairwise_feature = np.zeros((self.num_jobs,
-                                     self.num_machines + self.num_buffers + self.num_outputpoints,
-                                     self.num_cranes + 1,
-                                     self.global_pairwise_feature_dim))
+        # pairwise_feature = np.zeros((self.num_jobs,
+        #                              self.num_machines + self.num_buffers + self.num_outputpoints,
+        #                              self.num_cranes + 1,
+        #                              self.global_pairwise_feature_dim))
         current_operations = np.zeros(self.num_jobs)
         reorder_idx = np.zeros(self.num_machines + self.num_buffers + self.num_outputpoints)
 
@@ -825,72 +825,72 @@ class Factory:
         crane_feature[:, 5] = crane_feature[:, 5] / np.max(crane_feature[:, 5]) \
             if np.max(crane_feature[:, 5]) > 0.0 else 0.0
 
-        # Pairwise Feature
-        tag = np.array([(temp >= 0).any() for temp in proctime_compatible])
-        proctime_compatible = proctime_compatible[tag] if len(tag) > 0 else None
-
-        for j, job in enumerate(self.monitor.queue_for_machine_scheduling.values()):
-
-            if job.step < len(job.operations):
-                current_operation = job.operations[job.step]
-                skip = False
-            else:
-                current_operation = job.operations[-1]
-                skip = True
-
-            for i, location in enumerate(self.locations.values()):
-                if location.category == 0:
-                    continue
-                else:
-                    job_coord = self.locations[job.current_location].coord
-                    f1 = (location.coord[0] - job_coord[0]) / self.x_max if self.x_max != 0 else 0
-                    f2 = (location.coord[1] - job_coord[1]) / self.y_max if self.y_max != 0 else 0
-
-                    for crane in self.resources.values():
-                        if len(crane.queue) > 0:
-                            last_working_order = crane.queue[-1]
-                        elif crane.current_working_order is not None:
-                            last_working_order = crane.current_working_order
-                        else:
-                            last_working_order
-
-                        if last_working_order is not None:
-                            crane_location = self.locations[last_working_order[2]]
-                            crane_coord = crane_location.coord
-                        else:
-                            crane_coord = crane.current_coord
-
-                        f3 = (crane_coord[0] - job_coord[0]) / self.x_max if self.x_max != 0 else 0
-                        f4 = (crane_coord[1] - job_coord[1]) / self.y_max if self.y_max != 0 else 0
-
-                        if location.category == 1:
-                            fully_occupied = location.check_status()
-
-                            proctime = current_operation.get_processing_time(location.local_id)
-                            proctime = (proctime - self.proctime_min) / (self.proctime_max - self.proctime_min)
-
-                            if (not fully_occupied) and (not skip) and (proctime >= 0):
-                                options = current_operation.options
-                                options = (options - self.proctime_min) / (self.proctime_max - self.proctime_min)
-
-                                proctime_compatible_copy = copy.copy(proctime_compatible)
-                                proctime_compatible_copy[:, location.local_id] = -1
-
-                                f5 = proctime
-                                f6 = proctime / np.max(options) if np.max(options) > 0 else 1
-                                f7 = proctime / np.max(proctime_compatible[:, location.local_id]) \
-                                    if np.max(proctime_compatible[:, location.local_id]) > 0 else 1
-                                f8 = proctime / np.max(proctime_compatible) \
-                                    if np.max(proctime_compatible) > 0 else 1
-
-                                pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
-                                    = [f1, f2, f3, f4, f5, f6, f7, f8]
-                            else:
-                                pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
-                                    = [f1, f2, f3, f4, 0, 0, 0, 0]
-                        else:
-                            pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
-                                = [f1, f2, f3, f4, 0, 0, 0, 0]
+        # # Pairwise Feature
+        # tag = np.array([(temp >= 0).any() for temp in proctime_compatible])
+        # proctime_compatible = proctime_compatible[tag] if len(tag) > 0 else None
+        #
+        # for j, job in enumerate(self.monitor.queue_for_machine_scheduling.values()):
+        #
+        #     if job.step < len(job.operations):
+        #         current_operation = job.operations[job.step]
+        #         skip = False
+        #     else:
+        #         current_operation = job.operations[-1]
+        #         skip = True
+        #
+        #     for i, location in enumerate(self.locations.values()):
+        #         if location.category == 0:
+        #             continue
+        #         else:
+        #             job_coord = self.locations[job.current_location].coord
+        #             f1 = (location.coord[0] - job_coord[0]) / self.x_max if self.x_max != 0 else 0
+        #             f2 = (location.coord[1] - job_coord[1]) / self.y_max if self.y_max != 0 else 0
+        #
+        #             for crane in self.resources.values():
+        #                 if len(crane.queue) > 0:
+        #                     last_working_order = crane.queue[-1]
+        #                 elif crane.current_working_order is not None:
+        #                     last_working_order = crane.current_working_order
+        #                 else:
+        #                     last_working_order
+        #
+        #                 if last_working_order is not None:
+        #                     crane_location = self.locations[last_working_order[2]]
+        #                     crane_coord = crane_location.coord
+        #                 else:
+        #                     crane_coord = crane.current_coord
+        #
+        #                 f3 = (crane_coord[0] - job_coord[0]) / self.x_max if self.x_max != 0 else 0
+        #                 f4 = (crane_coord[1] - job_coord[1]) / self.y_max if self.y_max != 0 else 0
+        #
+        #                 if location.category == 1:
+        #                     fully_occupied = location.check_status()
+        #
+        #                     proctime = current_operation.get_processing_time(location.local_id)
+        #                     proctime = (proctime - self.proctime_min) / (self.proctime_max - self.proctime_min)
+        #
+        #                     if (not fully_occupied) and (not skip) and (proctime >= 0):
+        #                         options = current_operation.options
+        #                         options = (options - self.proctime_min) / (self.proctime_max - self.proctime_min)
+        #
+        #                         proctime_compatible_copy = copy.copy(proctime_compatible)
+        #                         proctime_compatible_copy[:, location.local_id] = -1
+        #
+        #                         f5 = proctime
+        #                         f6 = proctime / np.max(options) if np.max(options) > 0 else 1
+        #                         f7 = proctime / np.max(proctime_compatible[:, location.local_id]) \
+        #                             if np.max(proctime_compatible[:, location.local_id]) > 0 else 1
+        #                         f8 = proctime / np.max(proctime_compatible) \
+        #                             if np.max(proctime_compatible) > 0 else 1
+        #
+        #                         pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
+        #                             = [f1, f2, f3, f4, f5, f6, f7, f8]
+        #                     else:
+        #                         pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
+        #                             = [f1, f2, f3, f4, 0, 0, 0, 0]
+        #                 else:
+        #                     pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
+        #                         = [f1, f2, f3, f4, 0, 0, 0, 0]
 
         # Edge Construction
         for j in self.df_operations["Job_Index"].unique():
@@ -1025,18 +1025,19 @@ class Factory:
         graph_feature["output", "output_to_operation", "operation"].edge_index = edge_output_to_operation
         graph_feature["operation", "operation_to_output", "output"].edge_index = edge_operation_to_output
 
-        pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
-        current_operations = torch.from_numpy(current_operations).type(torch.long).to(self.device)
-        reorder_idx = torch.from_numpy(reorder_idx).type(torch.long).to(self.device)
+        # pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
+        # current_operations = torch.from_numpy(current_operations).type(torch.long).to(self.device)
+        # reorder_idx = torch.from_numpy(reorder_idx).type(torch.long).to(self.device)
 
         state = State()
-        mask = self._get_global_mask()
+        state.update(graph_feature=graph_feature)
+        # mask = self._get_global_mask()
 
-        state.update(graph_feature=graph_feature,
-                     pairwise_feature=pairwise_feature,
-                     current_operations=current_operations,
-                     reorder_idx=reorder_idx,
-                     mask=mask)
+        # state.update(graph_feature=graph_feature,
+        #              pairwise_feature=pairwise_feature,
+        #              current_operations=current_operations,
+        #              reorder_idx=reorder_idx,
+        #              mask=mask)
 
         return state
 
