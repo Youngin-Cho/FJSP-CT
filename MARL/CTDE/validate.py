@@ -31,11 +31,11 @@ def evaluate(agent, val_dir):
                 if mode == "fjsp":
                     fjsp_action, _, _ = agent.get_action(local_state=fjsp_state,
                                                          scheduling_mode="fjsp")
-                    next_ct_state, reward, done = env.step(fjsp_action)
+                    next_ct_state, _, reward, done = env.step(fjsp_action)
                 else:
                     ct_action, _, _ = agent.get_action(local_state=ct_state,
                                                        scheduling_mode="ct")
-                    next_fjsp_state, reward, done = env.step(ct_action)
+                    next_fjsp_state, _, reward, done = env.step(ct_action)
 
                 if mode == "fjsp":
                     ct_state = next_ct_state

@@ -42,6 +42,7 @@ def get_config():
     parser.add_argument("--V_coeff", type=float, default=0.5, help="coefficient for value loss")
     parser.add_argument("--E_coeff", type=float, default=0.01, help="coefficient for entropy loss")
     parser.add_argument('--no_value_clipping', action='store_true', help="Disable value clipping")
+    parser.add_argument('--global_state_encoding', type=str, default="EP", help="global state encoding method")
 
     parser.add_argument("--eval_every", type=int, default=50, help="Evaluate every x episodes")
     parser.add_argument("--save_every", type=int, default=500, help="Save a model every x episodes")
@@ -92,6 +93,7 @@ def train(config):
     V_coeff = config.V_coeff
     E_coeff = config.E_coeff
     use_value_clipping = False if config.no_value_clipping else True
+    global_state_encoding = config.global_state_encoding
 
     eval_every = config.eval_every
     save_every = config.save_every
@@ -137,11 +139,16 @@ def train(config):
                              y_spacing=setting["y_spacing"],
                              division=setting["division"])
 
+    if global_state_encoding == "EP":
+        return_global_state = True
+    else:
+        return_global_state = False
+
     env = Factory(data_src,
                   device=device,
                   algorithm=("RL", "RL"),
                   use_recording=use_recording,
-                  return_global_state=True)
+                  return_global_state=return_global_state)
 
     agent = Agent(fjsp_meta_data=env.fjsp_meta_data,
                   fjsp_state_size=env.fjsp_state_size,
@@ -168,6 +175,7 @@ def train(config):
                   V_coeff=V_coeff,
                   E_coeff=E_coeff,
                   use_value_clipping=use_value_clipping,
+                  global_state_encoding=global_state_encoding,
                   device=device)
 
     if not use_vessl:
@@ -224,7 +232,7 @@ def train(config):
                                                                      global_state=global_state,
                                                                      scheduling_mode="fjsp")
 
-                next_ct_state, fjsp_reward, done = env.step(fjsp_action)
+                next_ct_state, _, fjsp_reward, done = env.step(fjsp_action)
                 episode_reward += fjsp_reward
             else:
                 ct_action, ct_log_prob, _ = agent.get_action(local_state=ct_state,
@@ -321,7 +329,7 @@ def train(config):
                           device=device,
                           algorithm=("RL", "RL"),
                           use_recording=use_recording,
-                          return_global_state=True)
+                          return_global_state=return_global_state)
 
     if not use_vessl:
         writer.close()

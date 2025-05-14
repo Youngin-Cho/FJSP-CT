@@ -20,7 +20,8 @@ def evaluate(fjsp_agent, ct_agent, val_dir):
             env = Factory(val_dir + path,
                           device=device,
                           algorithm=(fjsp_agent.name, ct_agent.name),
-                          use_recording=False)
+                          use_recording=False,
+                          return_global_state=False)
 
             fjsp_state = env.reset()
 
@@ -29,10 +30,10 @@ def evaluate(fjsp_agent, ct_agent, val_dir):
 
                 if mode == "fjsp":
                     fjsp_action, _, _ = fjsp_agent.get_action(fjsp_state)
-                    next_ct_state, reward, done = env.step(fjsp_action)
+                    next_ct_state, _, reward, done = env.step(fjsp_action)
                 else:
                     ct_action, _, _ = ct_agent.get_action(ct_state)
-                    next_fjsp_state, reward, done = env.step(ct_action)
+                    next_fjsp_state, _, reward, done = env.step(ct_action)
 
                 if mode == "fjsp":
                     ct_state = next_ct_state

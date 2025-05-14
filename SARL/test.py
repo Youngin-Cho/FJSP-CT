@@ -7,7 +7,6 @@ import torch
 import numpy as np
 import pandas as pd
 
-from torch.distributions.categorical import Categorical
 from Environment.environment import Factory
 from Agent.FlexibleJobShop.network import FJSPScheduler
 from Agent.CraneTransportation.network import CTScheduler
@@ -75,7 +74,10 @@ def test(config):
         instance_name = filename.split(".")[-2]
 
         data_src = data_dir + filename
-        env = Factory(data_src, algorithm=(fjsp_algorithm, ct_algorithm), use_recording=use_recording)
+        env = Factory(data_src,
+                      algorithm=(fjsp_algorithm, ct_algorithm),
+                      use_recording=use_recording,
+                      return_global_state=False)
 
         if fjsp_algorithm == "RL":
             model_path = config.fjsp_model_path
@@ -141,7 +143,7 @@ def test(config):
                     else:
                         fjsp_action = fjsp_agent.act(fjsp_state)
 
-                    next_ct_state, reward, done = env.step(fjsp_action)
+                    next_ct_state, _, reward, done = env.step(fjsp_action)
                 else:
                     if ct_algorithm == "RL":
                         ct_action, _, _ = ct_agent.act(graph_feature=ct_state.graph_feature,
@@ -150,7 +152,7 @@ def test(config):
                     else:
                         ct_action = ct_agent.act(ct_state)
 
-                    next_fjsp_state, reward, done = env.step(ct_action)
+                    next_fjsp_state, _, reward, done = env.step(ct_action)
 
                 if mode == "fjsp":
                     ct_state = next_ct_state
@@ -225,6 +227,8 @@ if __name__ == "__main__":
                 #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
                 param_dir = ("./output/train/SARL/log/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
                 model_dir = ("./output/train/SARL/model/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
+                # param_dir = "./output/train/SARL/log/20-10/FJSP/RL-TDD/"
+                # model_dir = "./output/train/SARL/model/20-10/FJSP/RL-TDD/"
 
             episode = max(
                 int(os.path.splitext(filename)[0].split("-")[1])
@@ -246,6 +250,8 @@ if __name__ == "__main__":
                 #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
                 param_dir = ("./output/train/SARL/log/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
                 model_dir = ("./output/train/SARL/model/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
+                # param_dir = "./output/train/SARL/log/20-10/CT/SPT-RL/"
+                # model_dir = "./output/train/SARL/model/20-10/CT/SPT-RL/"
 
             episode = max(
                 int(os.path.splitext(filename)[0].split("-")[1])

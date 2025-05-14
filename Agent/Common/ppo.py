@@ -152,6 +152,7 @@ class RollOutMemory:
 class Agent:
     def __init__(self,
                  learning_approach="CTDE",
+                 global_state_encoding="EP",
                  fjsp_meta_data=None,  # 그래프 구조에 대한 정보
                  fjsp_state_size=None,  # 노드 타입 별 특성 벡터의 크기
                  fjsp_num_nodes=None,  # 노드 타입 별 그래프 내 노드의 개수
@@ -182,6 +183,7 @@ class Agent:
         self.name = "RL"
 
         self.learning_approach = learning_approach
+        self.global_state_encoding = global_state_encoding
         self.gamma = gamma
         self.lmbda = lmbda
         self.eps_clip = eps_clip
@@ -220,13 +222,14 @@ class Agent:
             self.ct_optimizer = optim.Adam(self.ct_network.parameters(), lr=lr)
             self.ct_scheduler = StepLR(optimizer=self.ct_optimizer, step_size=lr_step, gamma=lr_decay)
 
-            self.global_critic = GlobalCritic(meta_data=global_meta_data,
-                                              state_size=global_state_size,
-                                              num_nodes=global_num_nodes,
+            self.global_critic = GlobalCritic(global_meta_data=global_meta_data,
+                                              global_state_size=global_state_size,
+                                              global_num_nodes=global_num_nodes,
                                               embed_dim=embed_dim,
                                               num_heads=num_heads,
                                               num_HGT_layers=num_HGT_layers,
-                                              num_MLP_layers=num_critic_layers).to(device)
+                                              num_MLP_layers=num_critic_layers,
+                                              global_state_encoding=global_state_encoding).to(device)
             self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr)
             self.critic_scheduler = StepLR(optimizer=self.critic_optimizer, step_size=lr_step, gamma=lr_decay)
         elif learning_approach == "IL":

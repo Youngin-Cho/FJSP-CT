@@ -150,7 +150,8 @@ def train(config):
     env = Factory(data_src,
                   device=device,
                   algorithm=(fjsp_algorithm, ct_algorithm),
-                  use_recording=use_recording)
+                  use_recording=use_recording,
+                  return_global_state=False)
 
     if fjsp_algorithm == "RL":
         fjsp_agent = FJSPAgent(meta_data=env.fjsp_meta_data,
@@ -253,7 +254,7 @@ def train(config):
                 else:
                     fjsp_action = fjsp_agent.act(fjsp_state)
 
-                next_ct_state, fjsp_reward, done = env.step(fjsp_action)
+                next_ct_state, _, fjsp_reward, done = env.step(fjsp_action)
                 episode_reward += fjsp_reward
             else:
                 ct_step += 1
@@ -263,7 +264,7 @@ def train(config):
                 else:
                     ct_action = ct_agent.act(ct_state)
 
-                next_fjsp_state, ct_reward, done = env.step(ct_action)
+                next_fjsp_state, _, ct_reward, done = env.step(ct_action)
                 episode_reward += ct_reward
 
             if mode == "fjsp":
@@ -344,7 +345,8 @@ def train(config):
             env = Factory(data_src,
                           device=device,
                           algorithm=(fjsp_algorithm, ct_algorithm),
-                          use_recording=use_recording)
+                          use_recording=use_recording,
+                          return_global_state=False)
 
     if not use_vessl:
         writer.close()

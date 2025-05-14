@@ -271,16 +271,15 @@ class Factory:
         next_local_state = self._get_local_state()
         if self.return_global_state and self.scheduling_mode == "machine":
             next_global_state = self._get_global_state()
+        else:
+            next_global_state = None
         reward = self._calculate_reward()
 
         self.estimated_completion_time = copy.copy(self.estimated_completion_time_updated)
         if self.decision_time != self.sim_env.now:
             self.decision_time = self.sim_env.now
 
-        if self.return_global_state and self.scheduling_mode == "machine":
-            return next_local_state, next_global_state, reward, done
-        else:
-            return next_local_state, reward, done
+        return next_local_state, next_global_state, reward, done
 
     def reset(self):
         self.sim_env, self.jobs, self.source, self.sink, self.locations, self.resources, self.monitor \
@@ -306,14 +305,13 @@ class Factory:
         local_state = self._get_local_state()
         if self.return_global_state and self.scheduling_mode == "machine":
             global_state = self._get_global_state()
+        else:
+            global_state = None
 
         self.estimated_completion_time = copy.copy(self.estimated_completion_time_updated)
         self.decision_time = self.sim_env.now
 
-        if self.return_global_state and self.scheduling_mode == "machine":
-            return local_state, global_state
-        else:
-            return local_state
+        return local_state, global_state
 
     def _get_global_mask(self):
         first_dim = self.num_machines + self.num_buffers + self.num_outputpoints

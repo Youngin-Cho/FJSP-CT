@@ -64,7 +64,10 @@ def test(config):
         instance_name = filename.split(".")[-2]
 
         data_src = data_dir + filename
-        env = Factory(data_src, algorithm=("RL", "RL"), use_recording=use_recording)
+        env = Factory(data_src,
+                      algorithm=("RL", "RL"),
+                      use_recording=use_recording,
+                      return_global_state=False)
 
         param_path = config.param_path
 
@@ -118,13 +121,13 @@ def test(config):
                                                        current_operations=fjsp_state.current_operations,
                                                        reorder_idx=fjsp_state.reorder_idx)
 
-                    next_ct_state, reward, done = env.step(fjsp_action)
+                    next_ct_state, _, reward, done = env.step(fjsp_action)
                 else:
                     ct_action, _, _ = ct_agent.act(graph_feature=ct_state.graph_feature,
                                                    pairwise_feature=ct_state.pairwise_feature,
                                                    mask=ct_state.mask)
 
-                    next_fjsp_state, reward, done = env.step(ct_action)
+                    next_fjsp_state, _, reward, done = env.step(ct_action)
 
                 if mode == "fjsp":
                     ct_state = next_ct_state
@@ -151,57 +154,62 @@ def test(config):
 if __name__ == "__main__":
     config = get_config()
 
-    config.data_dir = "./input/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
-    config.res_dir = "./output/case1/test/%d-%d/IL/" % (config.num_jobs, config.num_machines)
+    test_case = [(10, 5), (15, 5), (20, 5),
+                 (15, 10), (20, 10), (25, 10),
+                 (20, 15), (25, 15), (30, 15)]
 
-    if not os.path.exists(config.res_dir):
-        os.makedirs(config.res_dir)
+    for num_jobs, num_machines in test_case:
+        config.data_dir = "./input/case1/test/%d-%d/" % (num_jobs, num_machines)
+        config.res_dir = "./output/case1/test/%d-%d/IL (learning rate)/" % (num_jobs, num_machines)
 
-    index = [int(os.path.splitext(filename)[0].split("-")[1])
-             for filename in os.listdir(config.data_dir)
-             if os.path.splitext(filename)[1] == '.xlsx']
-    columns = [i for i in range(config.num_iterations)]
+        if not os.path.exists(config.res_dir):
+            os.makedirs(config.res_dir)
 
-    if (config.param_dir is not None) and (config.fjsp_model_dir is not None) and (config.ct_model_dir is not None):
-        param_dir = config.param_dir
-        fjsp_model_dir = config.fjsp_model_dir
-        ct_model_dir = config.ct_model_dir
-    else:
-        param_dir = "./output/train/MARL/log/%d-%d/IL/" % (config.num_jobs, config.num_machines)
-        fjsp_model_dir = "./output/train/MARL/model/%d-%d/IL/%s/" % (config.num_jobs, config.num_machines, "FJSP")
-        ct_model_dir = "./output/train/MARL/model/%d-%d/IL/%s/" % (config.num_jobs, config.num_machines, "CT")
+        index = [int(os.path.splitext(filename)[0].split("-")[1])
+                 for filename in os.listdir(config.data_dir)
+                 if os.path.splitext(filename)[1] == '.xlsx']
+        columns = [i for i in range(config.num_iterations)]
 
-    fjsp_episode = max(
-        int(os.path.splitext(filename)[0].split("-")[1])
-        for filename in os.listdir(fjsp_model_dir)
-        if os.path.splitext(filename)[1] == '.pt'
-    )
+        if (config.param_dir is not None) and (config.fjsp_model_dir is not None) and (config.ct_model_dir is not None):
+            param_dir = config.param_dir
+            fjsp_model_dir = config.fjsp_model_dir
+            ct_model_dir = config.ct_model_dir
+        else:
+            param_dir = "./output/train/MARL/log/%d-%d/IL/" % (config.num_jobs, config.num_machines)
+            fjsp_model_dir = "./output/train/MARL/model/%d-%d/IL/%s/" % (config.num_jobs, config.num_machines, "FJSP")
+            ct_model_dir = "./output/train/MARL/model/%d-%d/IL/%s/" % (config.num_jobs, config.num_machines, "CT")
 
-    ct_episode = max(
-        int(os.path.splitext(filename)[0].split("-")[1])
-        for filename in os.listdir(ct_model_dir)
-        if os.path.splitext(filename)[1] == '.pt'
-    )
+        fjsp_episode = max(
+            int(os.path.splitext(filename)[0].split("-")[1])
+            for filename in os.listdir(fjsp_model_dir)
+            if os.path.splitext(filename)[1] == '.pt'
+        )
 
-    config.param_path = param_dir + "parameters.json"
-    config.fjsp_model_path = fjsp_model_dir + "episode-%d.pt" % fjsp_episode
-    config.ct_model_path = ct_model_dir + "episode-%d.pt" % ct_episode
+        ct_episode = max(
+            int(os.path.splitext(filename)[0].split("-")[1])
+            for filename in os.listdir(ct_model_dir)
+            if os.path.splitext(filename)[1] == '.pt'
+        )
 
-    makespans, computing_times = test(config)
+        config.param_path = param_dir + "parameters.json"
+        config.fjsp_model_path = fjsp_model_dir + "episode-%d.pt" % fjsp_episode
+        config.ct_model_path = ct_model_dir + "episode-%d.pt" % ct_episode
 
-    df_makespan = pd.DataFrame(makespans, index=index, columns=columns)
-    df_computing_time = pd.DataFrame(computing_times, index=index, columns=columns)
+        makespans, computing_times = test(config)
 
-    df_makespan["avg"] = df_makespan.mean(axis=1)
-    df_computing_time["avg"] = df_computing_time.mean(axis=1)
+        df_makespan = pd.DataFrame(makespans, index=index, columns=columns)
+        df_computing_time = pd.DataFrame(computing_times, index=index, columns=columns)
 
-    df_makespan.loc["avg"] = df_makespan.mean(axis=0)
-    df_computing_time.loc["avg"] = df_computing_time.mean(axis=0)
+        df_makespan["avg"] = df_makespan.mean(axis=1)
+        df_computing_time["avg"] = df_computing_time.mean(axis=1)
 
-    file_name = "(%s+%s) test results.xlsx" % ("RL", "RL")
-    writer = pd.ExcelWriter(config.res_dir + file_name)
-    df_makespan.to_excel(writer, sheet_name="makespan")
-    df_computing_time.to_excel(writer, sheet_name="computing_time")
-    writer.close()
+        df_makespan.loc["avg"] = df_makespan.mean(axis=0)
+        df_computing_time.loc["avg"] = df_computing_time.mean(axis=0)
 
-    print("==========Test of IPPO finished==========")
+        file_name = "(%s+%s) test results.xlsx" % ("RL", "RL")
+        writer = pd.ExcelWriter(config.res_dir + file_name)
+        df_makespan.to_excel(writer, sheet_name="makespan")
+        df_computing_time.to_excel(writer, sheet_name="computing_time")
+        writer.close()
+
+        print("==========Test of IPPO finished==========")
