@@ -1467,10 +1467,14 @@ class Factory:
                     crane_feature[crane.id, :] = [f1, f2, f3, f4, f5, f6]
 
                 # Dummy node
-                current_location = self.monitor.queue_for_crane_scheduling.current_location
-                current_coord = self.locations[current_location].coord
-                f1 = current_coord[0] / self.x_max if self.x_max != 0 else 0
-                f2 = current_coord[1] / self.y_max if self.y_max != 0 else 0
+                if self.monitor.queue_for_crane_scheduling is not None:
+                    current_location = self.monitor.queue_for_crane_scheduling.current_location
+                    current_coord = self.locations[current_location].coord
+                    f1 = current_coord[0] / self.x_max if self.x_max != 0 else 0
+                    f2 = current_coord[1] / self.y_max if self.y_max != 0 else 0
+                else:
+                    f1 = -1
+                    f2 = -1
 
                 crane_feature[self.num_cranes, :] = [f1, f2, -1, -1, 0, 0]
 
