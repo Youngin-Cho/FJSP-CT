@@ -1441,7 +1441,8 @@ class Factory:
                         tag.append("get")
                         tag.append("put")
 
-                    f5 = remaining_jobs / len(self.monitor.jobs_in_system)
+                    f5 = remaining_jobs / len(self.monitor.jobs_in_system) \
+                        if len(self.monitor.jobs_in_system) > 0 else 0.0
 
                     remaining_work = 0
                     current_coord = crane.current_coord
