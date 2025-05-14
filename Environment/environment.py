@@ -312,7 +312,7 @@ class Factory:
 
         self._update_completion_time()
 
-        local_state = self._get_local_state()
+        local_state = self._get_local_state(self.scheduling_mode)
         if self.return_global_state and self.scheduling_mode == "machine":
             if self.global_state_encoding == "EP":
                 global_state = self._get_global_state()
