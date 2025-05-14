@@ -148,7 +148,8 @@ def train(config):
                   device=device,
                   algorithm=("RL", "RL"),
                   use_recording=use_recording,
-                  return_global_state=return_global_state)
+                  return_global_state=return_global_state,
+                  global_state_encoding=global_state_encoding)
 
     agent = Agent(fjsp_meta_data=env.fjsp_meta_data,
                   fjsp_state_size=env.fjsp_state_size,
@@ -256,7 +257,6 @@ def train(config):
                                  value=value)
 
                 fjsp_state = next_fjsp_state
-                global_state = next_global_state
 
             if done or len(agent.memory.fjsp_actions) == T_horizon:
                 if done:
@@ -329,7 +329,8 @@ def train(config):
                           device=device,
                           algorithm=("RL", "RL"),
                           use_recording=use_recording,
-                          return_global_state=return_global_state)
+                          return_global_state=return_global_state,
+                          global_state_encoding=global_state_encoding)
 
     if not use_vessl:
         writer.close()

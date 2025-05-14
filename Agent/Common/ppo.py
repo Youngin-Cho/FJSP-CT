@@ -22,6 +22,8 @@ class RollOutMemory:
         self.ct_pairwise_features = []
         self.ct_masks = []
         self.global_graph_features = []
+        self.global_fjsp_graph_features = []
+        self.global_ct_graph_features = []
         self.current_operations = []
         self.reorder_idxs = []
 
@@ -43,6 +45,8 @@ class RollOutMemory:
         del self.ct_pairwise_features[:]
         del self.ct_masks[:]
         del self.global_graph_features[:]
+        del self.global_fjsp_graph_features[:]
+        del self.global_ct_graph_features[:]
         del self.current_operations[:]
         del self.reorder_idxs[:]
 
@@ -81,7 +85,11 @@ class RollOutMemory:
             self.ct_masks.append(ct_state.mask.unsqueeze(0))
 
         if global_state is not None:
-            self.global_graph_features.append(global_state.graph_feature)
+            if type(global_state) is tuple:
+                self.global_fjsp_graph_features.append(global_state[0].graph_feature)
+                self.global_ct_graph_features.append(global_state[1].graph_feature)
+            else:
+                self.global_graph_features.append(global_state.graph_feature)
 
         # other variables
         if fjsp_action is not None:
@@ -126,6 +134,13 @@ class RollOutMemory:
         else:
             global_graph_features = None
 
+        if len(self.global_fjsp_graph_features) > 0:
+            global_fjsp_graph_features = Batch.from_data_list(self.global_fjsp_graph_features).to(self.device)
+            global_ct_graph_features = Batch.from_data_list(self.global_ct_graph_features).to(self.device)
+        else:
+            global_fjsp_graph_features = None
+            global_ct_graph_features = None
+
         if len(self.fjsp_actions) > 0:
             fjsp_actions = torch.from_numpy(np.array(self.fjsp_actions)).type(torch.long).to(self.device)
             fjsp_log_probs = torch.from_numpy(np.array(self.fjsp_log_probs)).type(torch.float32).to(self.device)
@@ -145,7 +160,8 @@ class RollOutMemory:
         values = torch.from_numpy(np.array(self.values)).type(torch.float32).to(self.device)
 
         return (fjsp_graph_features, fjsp_pairwise_features, fjsp_masks, fjsp_actions, fjsp_log_probs,
-                ct_graph_features, ct_pairwise_features, ct_masks, ct_actions, ct_log_probs, global_graph_features,
+                ct_graph_features, ct_pairwise_features, ct_masks, ct_actions, ct_log_probs,
+                global_graph_features, global_fjsp_graph_features, global_ct_graph_features,
                 rewards, values, dones, current_operations, reorder_idxs)
 
 
@@ -281,8 +297,18 @@ class Agent:
                 if global_state is not None:
                     self.global_critic.eval()
                     with torch.no_grad():
-                        global_graph_feature = Batch.from_data_list([global_state.graph_feature]).to(self.device)
-                        value = self.global_critic.evaluate(batch_graph_feature=global_graph_feature).squeeze().item()
+                        if self.global_state_encoding == "EP":
+                            global_graph_feature = Batch.from_data_list([global_state.graph_feature]).to(self.device)
+                            value = self.global_critic.evaluate(
+                                batch_global_graph_feature=global_graph_feature
+                            ).squeeze().item()
+                        else:
+                            fjsp_graph_feature = Batch.from_data_list([global_state[0].graph_feature]).to(self.device)
+                            ct_graph_feature = Batch.from_data_list([global_state[1].graph_feature]).to(self.device)
+                            value = self.global_critic.evaluate(
+                                batch_fjsp_graph_feature=fjsp_graph_feature,
+                                batch_ct_graph_feature=ct_graph_feature,
+                            ).squeeze().item()
                 else:
                     value = None
 
@@ -320,6 +346,8 @@ class Agent:
              ct_actions,
              ct_log_probs,
              global_graph_features,
+             global_fjsp_graph_features,
+             global_ct_graph_features,
              rewards,
              values,
              dones,
@@ -370,7 +398,12 @@ class Agent:
                 ct_surr2 = torch.clamp(ct_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
                 ct_policy_loss = torch.min(ct_surr1, ct_surr2)
 
-                new_values = self.global_critic.evaluate(batch_graph_feature=global_graph_features)
+                if self.global_state_encoding == "EP":
+                    new_values = self.global_critic.evaluate(batch_global_graph_feature=global_graph_features)
+                else:
+                    new_values = self.global_critic.evaluate(
+                        batch_fjsp_graph_feature=global_fjsp_graph_features,
+                        batch_ct_graph_feature=global_ct_graph_features)
 
                 if self.use_value_clipping:
                     new_values_clipped = values[:-1] + torch.clamp(new_values - values[:-1], -self.eps_clip, self.eps_clip)

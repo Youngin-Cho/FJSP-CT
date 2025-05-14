@@ -42,8 +42,13 @@ class State:
 
 
 class Factory:
-    def __init__(self, data_src, safety_margin=2, device='cpu', algorithm=('RL', 'RL'),
-                 use_recording=False, return_global_state=False):
+    def __init__(self, data_src,
+                 safety_margin=2,
+                 device='cpu',
+                 algorithm=('RL', 'RL'),
+                 use_recording=False,
+                 return_global_state=False,
+                 global_state_encoding="EP"):
 
         self.data_src = data_src
         self.safety_margin = safety_margin
@@ -51,6 +56,7 @@ class Factory:
         self.algorithm = algorithm
         self.use_recording = use_recording
         self.return_global_state = return_global_state
+        self.global_state_encoding = global_state_encoding
 
         if type(data_src) is DataGenerator:
             self.df_operations, self.df_locations, self.df_resources = data_src.generate()
@@ -268,9 +274,13 @@ class Factory:
 
         self._update_completion_time()
 
-        next_local_state = self._get_local_state()
+        next_local_state = self._get_local_state(self.scheduling_mode)
         if self.return_global_state and self.scheduling_mode == "machine":
-            next_global_state = self._get_global_state()
+            if self.global_state_encoding == "EP":
+                next_global_state = self._get_global_state()
+            else:
+                ct_state = self._get_local_state("crane")
+                next_global_state = (next_local_state, ct_state)
         else:
             next_global_state = None
         reward = self._calculate_reward()
@@ -304,7 +314,11 @@ class Factory:
 
         local_state = self._get_local_state()
         if self.return_global_state and self.scheduling_mode == "machine":
-            global_state = self._get_global_state()
+            if self.global_state_encoding == "EP":
+                global_state = self._get_global_state()
+            else:
+                ct_state = self._get_local_state("crane")
+                global_state = (local_state, ct_state)
         else:
             global_state = None
 
@@ -1039,8 +1053,8 @@ class Factory:
 
         return state
 
-    def _get_local_state(self):
-        if self.scheduling_mode == "machine":
+    def _get_local_state(self, scheduling_mode):
+        if scheduling_mode == "machine":
             machine_scheduling_algorithm = self.algorithm[0]
 
             if machine_scheduling_algorithm == "RL":
@@ -1511,29 +1525,30 @@ class Factory:
 
                 # Pairwise Feature
                 job = self.monitor.queue_for_crane_scheduling
-                operation = job.get_current_operation()
-                if operation is None:
-                    operation = job.operations[-1]
-                current_location = self.monitor.queue_for_crane_scheduling.current_location
-                current_coord = self.locations[current_location].coord
-                for crane in self.resources.values():
-                    if len(crane.queue) > 0:
-                        last_working_order = crane.queue[-1]
-                    elif crane.current_working_order is not None:
-                        last_working_order = crane.current_working_order
-                    else:
-                        last_working_order
+                if job is not None:
+                    operation = job.get_current_operation()
+                    if operation is None:
+                        operation = job.operations[-1]
+                    current_location = self.monitor.queue_for_crane_scheduling.current_location
+                    current_coord = self.locations[current_location].coord
+                    for crane in self.resources.values():
+                        if len(crane.queue) > 0:
+                            last_working_order = crane.queue[-1]
+                        elif crane.current_working_order is not None:
+                            last_working_order = crane.current_working_order
+                        else:
+                            last_working_order
 
-                    if last_working_order is not None:
-                        crane_location = self.locations[last_working_order[2]]
-                        crane_coord = crane_location.coord
-                    else:
-                        crane_coord = crane.current_coord
+                        if last_working_order is not None:
+                            crane_location = self.locations[last_working_order[2]]
+                            crane_coord = crane_location.coord
+                        else:
+                            crane_coord = crane.current_coord
 
-                    f1 = (crane_coord[0] - current_coord[0]) / self.x_max if self.x_max != 0 else 0
-                    f2 = (crane_coord[1] - current_coord[1]) / self.y_max if self.y_max != 0 else 0
+                        f1 = (crane_coord[0] - current_coord[0]) / self.x_max if self.x_max != 0 else 0
+                        f2 = (crane_coord[1] - current_coord[1]) / self.y_max if self.y_max != 0 else 0
 
-                    pairwise_feature[operation.id, crane.id, :] = [f1, f2]
+                        pairwise_feature[operation.id, crane.id, :] = [f1, f2]
 
                 # Edge Construction
                 for crane_1 in self.resources.values():
@@ -1558,51 +1573,92 @@ class Factory:
                             edge_successor[1].append(operation.id - 1)
 
                         if k < job.step:
-                            if ((self.monitor.queue_for_crane_scheduling.id == job.id)
-                                and (k == len(job.operations) - 1)):
-                                for i in range(self.num_cranes + 1):
-                                    edge_operation_to_crane[0].append(operation.id)
-                                    edge_operation_to_crane[1].append(i)
-                                    edge_crane_to_operation[0].append(i)
-                                    edge_crane_to_operation[1].append(operation.id)
-                            else:
-                                # pass
-                                crane_name = operation.allocated_crane
-                                if crane_name is None:
-                                    edge_operation_to_crane[0].append(operation.id)
-                                    edge_operation_to_crane[1].append(self.num_cranes)
-                                    edge_crane_to_operation[0].append(self.num_cranes)
-                                    edge_crane_to_operation[1].append(operation.id)
+                            if self.monitor.queue_for_crane_scheduling is not None:
+                                if ((self.monitor.queue_for_crane_scheduling.id == job.id)
+                                    and (k == len(job.operations) - 1)):
+                                    for i in range(self.num_cranes + 1):
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(i)
+                                        edge_crane_to_operation[0].append(i)
+                                        edge_crane_to_operation[1].append(operation.id)
                                 else:
-                                    crane = self.resources[crane_name]
-                                    edge_operation_to_crane[0].append(operation.id)
-                                    edge_operation_to_crane[1].append(crane.id)
-                                    edge_crane_to_operation[0].append(crane.id)
-                                    edge_crane_to_operation[1].append(operation.id)
+                                    crane_name = operation.allocated_crane
+                                    if crane_name is None:
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(self.num_cranes)
+                                        edge_crane_to_operation[0].append(self.num_cranes)
+                                        edge_crane_to_operation[1].append(operation.id)
+                                    else:
+                                        crane = self.resources[crane_name]
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(crane.id)
+                                        edge_crane_to_operation[0].append(crane.id)
+                                        edge_crane_to_operation[1].append(operation.id)
+                            else:
+                                if (k == len(job.operations) - 1) and (job.id in self.monitor.jobs_in_system.keys()):
+                                    for i in range(self.num_cranes + 1):
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(i)
+                                        edge_crane_to_operation[0].append(i)
+                                        edge_crane_to_operation[1].append(operation.id)
+                                else:
+                                    crane_name = operation.allocated_crane
+                                    if crane_name is None:
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(self.num_cranes)
+                                        edge_crane_to_operation[0].append(self.num_cranes)
+                                        edge_crane_to_operation[1].append(operation.id)
+                                    else:
+                                        crane = self.resources[crane_name]
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(crane.id)
+                                        edge_crane_to_operation[0].append(crane.id)
+                                        edge_crane_to_operation[1].append(operation.id)
                         elif k == job.step:
-                            if (((operation.id in self.monitor.operations_loading
-                                    or operation.id in self.monitor.operations_unloading))
-                                    and (self.monitor.queue_for_crane_scheduling.id != job.id)):
-                                crane_name = operation.allocated_crane
-                                if crane_name is None:
-                                    edge_operation_to_crane[0].append(operation.id)
-                                    edge_operation_to_crane[1].append(self.num_cranes)
-                                    edge_crane_to_operation[0].append(self.num_cranes)
-                                    edge_crane_to_operation[1].append(operation.id)
+                            if self.monitor.queue_for_crane_scheduling is not None:
+                                if (((operation.id in self.monitor.operations_loading
+                                        or operation.id in self.monitor.operations_unloading))
+                                        and (self.monitor.queue_for_crane_scheduling.id != job.id)):
+                                    crane_name = operation.allocated_crane
+                                    if crane_name is None:
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(self.num_cranes)
+                                        edge_crane_to_operation[0].append(self.num_cranes)
+                                        edge_crane_to_operation[1].append(operation.id)
+                                    else:
+                                        crane = self.resources[crane_name]
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(crane.id)
+                                        edge_crane_to_operation[0].append(crane.id)
+                                        edge_crane_to_operation[1].append(operation.id)
                                 else:
-                                    crane = self.resources[crane_name]
-                                    edge_operation_to_crane[0].append(operation.id)
-                                    edge_operation_to_crane[1].append(crane.id)
-                                    edge_crane_to_operation[0].append(crane.id)
-                                    edge_crane_to_operation[1].append(operation.id)
+                                    for i in range(self.num_cranes + 1):
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(i)
+                                        edge_crane_to_operation[0].append(i)
+                                        edge_crane_to_operation[1].append(operation.id)
                             else:
-                                for i in range(self.num_cranes + 1):
-                                    edge_operation_to_crane[0].append(operation.id)
-                                    edge_operation_to_crane[1].append(i)
-                                    edge_crane_to_operation[0].append(i)
-                                    edge_crane_to_operation[1].append(operation.id)
+                                if ((operation.id in self.monitor.operations_loading
+                                     or operation.id in self.monitor.operations_unloading)):
+                                    crane_name = operation.allocated_crane
+                                    if crane_name is None:
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(self.num_cranes)
+                                        edge_crane_to_operation[0].append(self.num_cranes)
+                                        edge_crane_to_operation[1].append(operation.id)
+                                    else:
+                                        crane = self.resources[crane_name]
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(crane.id)
+                                        edge_crane_to_operation[0].append(crane.id)
+                                        edge_crane_to_operation[1].append(operation.id)
+                                else:
+                                    for i in range(self.num_cranes + 1):
+                                        edge_operation_to_crane[0].append(operation.id)
+                                        edge_operation_to_crane[1].append(i)
+                                        edge_crane_to_operation[0].append(i)
+                                        edge_crane_to_operation[1].append(operation.id)
                         else:
-                            # pass
                             for i in range(self.num_cranes + 1):
                                 edge_operation_to_crane[0].append(operation.id)
                                 edge_operation_to_crane[1].append(i)
@@ -1724,7 +1780,7 @@ class Factory:
                 elif crane_scheduling_algorithm == "RAND":
                     priority_idx[operation.id, :] = 1.0
 
-        if self.scheduling_mode == "machine":
+        if scheduling_mode == "machine":
             state = State(self.algorithm[0])
             mask = self._get_ms_mask()
 
