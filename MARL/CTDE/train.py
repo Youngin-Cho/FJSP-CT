@@ -139,16 +139,11 @@ def train(config):
                              y_spacing=setting["y_spacing"],
                              division=setting["division"])
 
-    if global_state_encoding == "EP":
-        return_global_state = True
-    else:
-        return_global_state = False
-
     env = Factory(data_src,
                   device=device,
                   algorithm=("RL", "RL"),
                   use_recording=use_recording,
-                  return_global_state=return_global_state,
+                  return_global_state=True,
                   global_state_encoding=global_state_encoding)
 
     agent = Agent(fjsp_meta_data=env.fjsp_meta_data,
@@ -329,7 +324,7 @@ def train(config):
                           device=device,
                           algorithm=("RL", "RL"),
                           use_recording=use_recording,
-                          return_global_state=return_global_state,
+                          return_global_state=True,
                           global_state_encoding=global_state_encoding)
 
     if not use_vessl:
