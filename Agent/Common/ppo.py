@@ -238,14 +238,27 @@ class Agent:
             self.ct_optimizer = optim.Adam(self.ct_network.parameters(), lr=lr)
             self.ct_scheduler = StepLR(optimizer=self.ct_optimizer, step_size=lr_step, gamma=lr_decay)
 
-            self.global_critic = GlobalCritic(global_meta_data=global_meta_data,
-                                              global_state_size=global_state_size,
-                                              global_num_nodes=global_num_nodes,
-                                              embed_dim=embed_dim,
-                                              num_heads=num_heads,
-                                              num_HGT_layers=num_HGT_layers,
-                                              num_MLP_layers=num_critic_layers,
-                                              global_state_encoding=global_state_encoding).to(device)
+            if self.global_state_encoding == "EP":
+                self.global_critic = GlobalCritic(global_meta_data=global_meta_data,
+                                                  global_state_size=global_state_size,
+                                                  global_num_nodes=global_num_nodes,
+                                                  embed_dim=embed_dim,
+                                                  num_heads=num_heads,
+                                                  num_HGT_layers=num_HGT_layers,
+                                                  num_MLP_layers=num_critic_layers,
+                                                  global_state_encoding=global_state_encoding).to(device)
+            else:
+                self.global_critic = GlobalCritic(fjsp_meta_data=fjsp_meta_data,
+                                                  fjsp_state_size=fjsp_state_size,
+                                                  fjsp_num_nodes=fjsp_num_nodes,
+                                                  ct_meta_data=ct_meta_data,
+                                                  ct_state_size=ct_state_size,
+                                                  ct_num_nodes=ct_num_nodes,
+                                                  embed_dim=embed_dim,
+                                                  num_heads=num_heads,
+                                                  num_HGT_layers=num_HGT_layers,
+                                                  num_MLP_layers=num_critic_layers,
+                                                  global_state_encoding=global_state_encoding).to(device)
             self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr)
             self.critic_scheduler = StepLR(optimizer=self.critic_optimizer, step_size=lr_step, gamma=lr_decay)
         elif learning_approach == "IL":
