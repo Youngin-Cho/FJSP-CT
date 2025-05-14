@@ -23,7 +23,7 @@ def evaluate(agent, val_dir):
                           use_recording=False,
                           return_global_state=False)
 
-            fjsp_state = env.reset()
+            fjsp_state, _ = env.reset()
 
             while True:
                 mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
