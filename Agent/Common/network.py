@@ -32,7 +32,7 @@ class GlobalCritic(nn.Module):
         self.num_heads = num_heads
         self.num_HGT_layers = num_HGT_layers
         self.num_MLP_layers = num_MLP_layers
-        self.global_state = global_state_encoding
+        self.global_state_encoding = global_state_encoding
 
         if global_state_encoding == "EP":
             self.global_meta_data = global_meta_data
