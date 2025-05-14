@@ -86,8 +86,8 @@ class RollOutMemory:
 
         if global_state is not None:
             if type(global_state) is tuple:
-                self.global_fjsp_graph_features.append(global_state[0].graph_feature)
-                self.global_ct_graph_features.append(global_state[1].graph_feature)
+                self.global_fjsp_graph_features.append(global_state[0])
+                self.global_ct_graph_features.append(global_state[1])
             else:
                 self.global_graph_features.append(global_state.graph_feature)
 
@@ -316,8 +316,8 @@ class Agent:
                                 batch_global_graph_feature=global_graph_feature
                             ).squeeze().item()
                         else:
-                            fjsp_graph_feature = Batch.from_data_list([global_state[0].graph_feature]).to(self.device)
-                            ct_graph_feature = Batch.from_data_list([global_state[1].graph_feature]).to(self.device)
+                            fjsp_graph_feature = Batch.from_data_list([global_state[0]]).to(self.device)
+                            ct_graph_feature = Batch.from_data_list([global_state[1]]).to(self.device)
                             value = self.global_critic.evaluate(
                                 batch_fjsp_graph_feature=fjsp_graph_feature,
                                 batch_ct_graph_feature=ct_graph_feature,

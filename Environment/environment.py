@@ -280,7 +280,7 @@ class Factory:
                 next_global_state = self._get_global_state()
             else:
                 ct_state = self._get_local_state("crane")
-                next_global_state = (next_local_state, ct_state)
+                next_global_state = (next_local_state.graph_feature, ct_state.graph_feature)
         else:
             next_global_state = None
         reward = self._calculate_reward()
@@ -318,7 +318,7 @@ class Factory:
                 global_state = self._get_global_state()
             else:
                 ct_state = self._get_local_state("crane")
-                global_state = (local_state, ct_state)
+                global_state = (local_state.graph_feature, ct_state.graph_feature)
         else:
             global_state = None
 
@@ -1799,16 +1799,19 @@ class Factory:
                              mask=mask)
         else:
             state = State(self.algorithm[1])
-            job = self.monitor.queue_for_crane_scheduling
-            mask = self._get_cs_mask(job, job.next_location)
+            if job is not None:
+                job = self.monitor.queue_for_crane_scheduling
+                mask = self._get_cs_mask(job, job.next_location)
 
-            if self.algorithm[1] == "RL":
-                state.update(graph_feature=graph_feature,
-                             pairwise_feature=pairwise_feature,
-                             mask=mask)
+                if self.algorithm[1] == "RL":
+                    state.update(graph_feature=graph_feature,
+                                 pairwise_feature=pairwise_feature,
+                                 mask=mask)
+                else:
+                    state.update(priority_idx=priority_idx,
+                                 mask=mask)
             else:
-                state.update(priority_idx=priority_idx,
-                             mask=mask)
+                state.update(graph_feature=graph_feature)
 
         self.state = state
 
