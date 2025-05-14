@@ -1799,8 +1799,9 @@ class Factory:
                              mask=mask)
         else:
             state = State(self.algorithm[1])
+
+            job = self.monitor.queue_for_crane_scheduling
             if job is not None:
-                job = self.monitor.queue_for_crane_scheduling
                 mask = self._get_cs_mask(job, job.next_location)
 
                 if self.algorithm[1] == "RL":
