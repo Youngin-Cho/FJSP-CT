@@ -3,7 +3,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, OneCycleLR
 from torch_geometric.data import Batch
 from Agent.FlexibleJobShop.network import FJSPScheduler
 
@@ -121,7 +121,8 @@ class FJSPAgent:
                                      num_critic_layers=num_critic_layers,
                                      use_local_critic=use_local_critic).to(device)
         self.optimizer = optim.Adam(self.network.parameters(), lr=lr)
-        self.scheduler = StepLR(optimizer=self.optimizer, step_size=lr_step, gamma=lr_decay)
+        # self.scheduler = StepLR(optimizer=self.optimizer, step_size=lr_step, gamma=lr_decay)
+        self.scheduler = OneCycleLR(self.optimizer, max_lr=0.0001, steps_per_epoch=3, epochs=1000, anneal_strategy='linear')
 
     def put_sample(self, state, action, reward, done, log_prob, value):
         self.memory.put(state, action, reward, done, log_prob, value)
