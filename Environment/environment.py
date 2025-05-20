@@ -1679,7 +1679,10 @@ class Factory:
                                     target_job = self.monitor.queue_for_crane_scheduling
                                     if target_job is not None:
                                         target_operation = target_job.get_current_operation()
-                                        target_operation_id = target_operation.id
+                                        if target_operation is not None:
+                                            target_operation_id = target_operation.id
+                                        else:
+                                            target_operation_id = target_job.operations[-1].id
                                     else:
                                         target_operation_id = None
 
