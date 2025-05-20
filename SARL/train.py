@@ -244,7 +244,7 @@ def train(config):
         episode_reward = 0.0
         episode_average_loss = 0.0
 
-        fjsp_state = env.reset()
+        fjsp_state, _ = env.reset()
 
         while True:
             mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
