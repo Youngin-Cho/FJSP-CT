@@ -19,6 +19,7 @@ def get_config():
 
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
+    parser.add_argument('--no_communication', action='store_true', help="Disable communication")
 
     parser.add_argument("--num_iterations", type=int, default=10, help="number of iterations")
     parser.add_argument("--random_seed", type=int, default=42, help="random seed")
@@ -48,6 +49,7 @@ def get_config():
 def test(config):
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_recording = False if config.no_record else True
+    use_communication = False if config.no_communication else True
 
     if use_cuda:
         device = torch.device("cuda:0")
@@ -77,6 +79,7 @@ def test(config):
         env = Factory(data_src,
                       algorithm=(fjsp_algorithm, ct_algorithm),
                       use_recording=use_recording,
+                      use_communication=use_communication,
                       return_global_state=False)
 
         if fjsp_algorithm == "RL":
@@ -127,7 +130,7 @@ def test(config):
             random.seed(random_seed + i)
 
             start = time.time()
-            fjsp_state = env.reset()
+            fjsp_state, _ = env.reset()
             done = False
 
             while not done:
@@ -201,82 +204,87 @@ if __name__ == "__main__":
         #              ("MWKR", "SETT"), ("MWKR", "TDD"), ("MWKR", "TDT"),
         #              ("RAND", "RAND")]
 
-    config.data_dir = "./input/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
-    config.res_dir = "./output/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
+    problem_size = [(10, 5), (15, 5), (20, 5), (15, 10), (20, 10), (25, 10), (20, 15), (25, 15), (30, 15)]
+    for num_jobs, num_machines in problem_size:
+        config.num_jobs = num_jobs
+        config.num_machines = num_machines
 
-    if not os.path.exists(config.res_dir):
-        os.makedirs(config.res_dir)
+        config.data_dir = "./input/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
+        config.res_dir = "./output/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
 
-    index = [int(os.path.splitext(filename)[0].split("-")[1])
-             for filename in os.listdir(config.data_dir)
-             if os.path.splitext(filename)[1] == '.xlsx']
-    columns = [i for i in range(config.num_iterations)]
+        if not os.path.exists(config.res_dir):
+            os.makedirs(config.res_dir)
 
-    for fjsp_algorithm, ct_algorithm in test_case:
-        config.fjsp_algorithm = fjsp_algorithm
-        config.ct_algorithm = ct_algorithm
+        index = [int(os.path.splitext(filename)[0].split("-")[1])
+                 for filename in os.listdir(config.data_dir)
+                 if os.path.splitext(filename)[1] == '.xlsx']
+        columns = [i for i in range(config.num_iterations)]
 
-        if fjsp_algorithm == "RL":
-            if (config.fjsp_param_dir is not None) and (config.fjsp_model_dir is not None):
-                param_dir = config.fjsp_param_dir
-                model_dir = config.fjsp_model_dir
-            else:
-                # param_dir = ("./output/train/SARL/log/%d-%d/FJSP/%s-%s/"
-                #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-                # model_dir = ("./output/train/SARL/model/%d-%d/FJSP/%s-%s/"
-                #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-                param_dir = ("./output/train/SARL/log/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
-                model_dir = ("./output/train/SARL/model/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
-                # param_dir = "./output/train/SARL/log/20-10/FJSP/RL-TDD/"
-                # model_dir = "./output/train/SARL/model/20-10/FJSP/RL-TDD/"
+        for fjsp_algorithm, ct_algorithm in test_case:
+            config.fjsp_algorithm = fjsp_algorithm
+            config.ct_algorithm = ct_algorithm
 
-            episode = max(
-                int(os.path.splitext(filename)[0].split("-")[1])
-                for filename in os.listdir(model_dir)
-                if os.path.splitext(filename)[1] == '.pt'
-            )
+            if fjsp_algorithm == "RL":
+                if (config.fjsp_param_dir is not None) and (config.fjsp_model_dir is not None):
+                    param_dir = config.fjsp_param_dir
+                    model_dir = config.fjsp_model_dir
+                else:
+                    # param_dir = ("./output/train/SARL/log/%d-%d/FJSP/%s-%s/"
+                    #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+                    # model_dir = ("./output/train/SARL/model/%d-%d/FJSP/%s-%s/"
+                    #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+                    param_dir = ("./output/train/SARL/log/20-10/FJSP/%s-%s (vc)/" % (fjsp_algorithm, ct_algorithm))
+                    model_dir = ("./output/train/SARL/model/20-10/FJSP/%s-%s (vc)/" % (fjsp_algorithm, ct_algorithm))
+                    # param_dir = "./output/train/SARL/log/20-10/FJSP/RL-TDD/"
+                    # model_dir = "./output/train/SARL/model/20-10/FJSP/RL-TDD/"
 
-            config.fjsp_param_path = param_dir + "parameters.json"
-            config.fjsp_model_path = model_dir + "episode-%d.pt" % episode
+                episode = max(
+                    int(os.path.splitext(filename)[0].split("-")[1])
+                    for filename in os.listdir(model_dir)
+                    if os.path.splitext(filename)[1] == '.pt'
+                )
 
-        if ct_algorithm == "RL":
-            if (config.ct_param_dir is not None) and (config.ct_model_dir is not None):
-                param_dir = config.ct_param_dir
-                model_dir = config.ct_model_dir
-            else:
-                # param_dir = ("./output/train/SARL/log/%d-%d/CT/%s-%s/"
-                #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-                # model_dir = ("./output/train/SARL/model/%d-%d/CT/%s-%s/"
-                #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-                param_dir = ("./output/train/SARL/log/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
-                model_dir = ("./output/train/SARL/model/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
-                # param_dir = "./output/train/SARL/log/20-10/CT/SPT-RL/"
-                # model_dir = "./output/train/SARL/model/20-10/CT/SPT-RL/"
+                config.fjsp_param_path = param_dir + "parameters.json"
+                config.fjsp_model_path = model_dir + "episode-%d.pt" % episode
 
-            episode = max(
-                int(os.path.splitext(filename)[0].split("-")[1])
-                for filename in os.listdir(model_dir)
-                if os.path.splitext(filename)[1] == '.pt'
-            )
+            if ct_algorithm == "RL":
+                if (config.ct_param_dir is not None) and (config.ct_model_dir is not None):
+                    param_dir = config.ct_param_dir
+                    model_dir = config.ct_model_dir
+                else:
+                    # param_dir = ("./output/train/SARL/log/%d-%d/CT/%s-%s/"
+                    #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+                    # model_dir = ("./output/train/SARL/model/%d-%d/CT/%s-%s/"
+                    #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
+                    param_dir = ("./output/train/SARL/log/20-10/CT/%s-%s (vc)/" % (fjsp_algorithm, ct_algorithm))
+                    model_dir = ("./output/train/SARL/model/20-10/CT/%s-%s (vc)/" % (fjsp_algorithm, ct_algorithm))
+                    # param_dir = "./output/train/SARL/log/20-10/CT/SPT-RL/"
+                    # model_dir = "./output/train/SARL/model/20-10/CT/SPT-RL/"
 
-            config.ct_param_path = param_dir + "parameters.json"
-            config.ct_model_path = model_dir + "episode-%d.pt" % episode
+                episode = max(
+                    int(os.path.splitext(filename)[0].split("-")[1])
+                    for filename in os.listdir(model_dir)
+                    if os.path.splitext(filename)[1] == '.pt'
+                )
 
-        makespans, computing_times = test(config)
+                config.ct_param_path = param_dir + "parameters.json"
+                config.ct_model_path = model_dir + "episode-%d.pt" % episode
 
-        df_makespan = pd.DataFrame(makespans, index=index, columns=columns)
-        df_computing_time = pd.DataFrame(computing_times, index=index, columns=columns)
+            makespans, computing_times = test(config)
 
-        df_makespan["avg"] = df_makespan.mean(axis=1)
-        df_computing_time["avg"] = df_computing_time.mean(axis=1)
+            df_makespan = pd.DataFrame(makespans, index=index, columns=columns)
+            df_computing_time = pd.DataFrame(computing_times, index=index, columns=columns)
 
-        df_makespan.loc["avg"] = df_makespan.mean(axis=0)
-        df_computing_time.loc["avg"] = df_computing_time.mean(axis=0)
+            df_makespan["avg"] = df_makespan.mean(axis=1)
+            df_computing_time["avg"] = df_computing_time.mean(axis=1)
 
-        file_name = "(%s+%s) test results.xlsx" % (fjsp_algorithm, ct_algorithm)
-        writer = pd.ExcelWriter(config.res_dir + file_name)
-        df_makespan.to_excel(writer, sheet_name="makespan")
-        df_computing_time.to_excel(writer, sheet_name="computing_time")
-        writer.close()
+            df_makespan.loc["avg"] = df_makespan.mean(axis=0)
+            df_computing_time.loc["avg"] = df_computing_time.mean(axis=0)
 
-        print("==========Test of %s+%s finished==========" % (fjsp_algorithm, ct_algorithm))
+            file_name = "(%s+%s) test results.xlsx" % (fjsp_algorithm, ct_algorithm)
+            writer = pd.ExcelWriter(config.res_dir + file_name)
+            df_makespan.to_excel(writer, sheet_name="makespan")
+            df_computing_time.to_excel(writer, sheet_name="computing_time")
+            writer.close()
+
+            print("==========Test of %s+%s finished==========" % (fjsp_algorithm, ct_algorithm))

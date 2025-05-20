@@ -17,6 +17,7 @@ def get_config():
 
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
+    parser.add_argument('--no_communication', action='store_true', help="Disable communication")
 
     parser.add_argument("--num_iterations", type=int, default=10, help="number of iterations")
     parser.add_argument("--random_seed", type=int, default=42, help="random seed")
@@ -41,6 +42,7 @@ def get_config():
 def test(config):
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_recording = False if config.no_record else True
+    use_communication = False if config.no_communication else True
 
     if use_cuda:
         device = torch.device("cuda:0")
@@ -67,6 +69,7 @@ def test(config):
         env = Factory(data_src,
                       algorithm=("RL", "RL"),
                       use_recording=use_recording,
+                      use_communication=use_cmmunication,
                       return_global_state=False)
 
         param_path = config.param_path
@@ -108,7 +111,7 @@ def test(config):
             random.seed(random_seed + i)
 
             start = time.time()
-            fjsp_state = env.reset()
+            fjsp_state, _ = env.reset()
             done = False
 
             while not done:
@@ -154,13 +157,14 @@ def test(config):
 if __name__ == "__main__":
     config = get_config()
 
-    test_case = [(10, 5), (15, 5), (20, 5),
-                 (15, 10), (20, 10), (25, 10),
-                 (20, 15), (25, 15), (30, 15)]
+    # test_case = [(10, 5), (15, 5), (20, 5),
+    #              (15, 10), (20, 10), (25, 10),
+    #              (20, 15), (25, 15), (30, 15)]
+    test_case = [(10, 5), (15, 5), (15, 10), (20, 10), (20, 15), (25, 15)]
 
     for num_jobs, num_machines in test_case:
         config.data_dir = "./input/case1/test/%d-%d/" % (num_jobs, num_machines)
-        config.res_dir = "./output/case1/test/%d-%d/IL (learning rate)/" % (num_jobs, num_machines)
+        config.res_dir = "./output/case1/test/%d-%d/IL/" % (num_jobs, num_machines)
 
         if not os.path.exists(config.res_dir):
             os.makedirs(config.res_dir)

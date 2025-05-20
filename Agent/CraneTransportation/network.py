@@ -8,7 +8,9 @@ from torch.distributions import Categorical
 
 class CTScheduler(nn.Module):
     def __init__(self, meta_data, state_size, num_nodes, embed_dim, num_heads,
-                       num_HGT_layers, num_actor_layers, num_critic_layers, use_local_critic=True):
+                       num_HGT_layers, num_actor_layers, num_critic_layers,
+                       use_local_critic=True, use_communication=True):
+
         super(CTScheduler, self).__init__()
         self.meta_data = meta_data
         self.state_size = state_size
@@ -19,6 +21,7 @@ class CTScheduler(nn.Module):
         self.num_actor_layers = num_actor_layers
         self.num_critic_layers = num_critic_layers
         self.use_local_critic = use_local_critic
+        self.use_communication = use_communication
 
         self.num_cranes = self.num_nodes["crane"]
 
@@ -29,14 +32,18 @@ class CTScheduler(nn.Module):
             else:
                 self.conv.append(HGTConv(embed_dim, embed_dim, meta_data, heads=num_heads))
 
-        self.fc = nn.ModuleList()
-        self.fc.append(nn.Linear(2, embed_dim))
-        self.fc.append(nn.Linear(embed_dim, embed_dim))
+        if self.use_communication:
+            self.fc = nn.ModuleList()
+            self.fc.append(nn.Linear(2, embed_dim))
+            self.fc.append(nn.Linear(embed_dim, embed_dim))
 
         self.actor = nn.ModuleList()
         for i in range(num_actor_layers):
             if i == 0:
-                self.actor.append(nn.Linear(embed_dim * 3, embed_dim))
+                if self.use_communication:
+                    self.actor.append(nn.Linear(embed_dim * 3, embed_dim))
+                else:
+                    self.actor.append(nn.Linear(embed_dim * 2, embed_dim))
             elif 0 < i < num_actor_layers - 1:
                 self.actor.append(nn.Linear(embed_dim, embed_dim))
             else:
@@ -52,7 +59,12 @@ class CTScheduler(nn.Module):
                 else:
                     self.critic.append(nn.Linear(embed_dim, 1))
 
-    def act(self, graph_feature, pairwise_feature, mask, greedy=False):
+    def act(self,
+            graph_feature=None,
+            pairwise_feature=None,
+            mask=None,
+            greedy=False):
+
         x_dict, edge_index_dict = graph_feature.x_dict, graph_feature.edge_index_dict
 
         for i in range(self.num_HGT_layers):
@@ -65,12 +77,15 @@ class CTScheduler(nn.Module):
         h_operations_padding = h_operations.unsqueeze(-2).expand(-1, self.num_cranes, -1)
         h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_padding)
 
-        h_added = pairwise_feature
-        for i in range(self.num_HGT_layers):
-            h_added = self.fc[i](h_added)
-            h_added = F.elu(h_added)
+        if self.use_communication:
+            h_added = pairwise_feature
+            for i in range(self.num_HGT_layers):
+                h_added = self.fc[i](h_added)
+                h_added = F.elu(h_added)
 
-        h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
+            h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
+        else:
+            h_actions = torch.cat((h_cranes_padding, h_operations_padding), dim=-1)
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:
@@ -113,7 +128,12 @@ class CTScheduler(nn.Module):
         else:
             return action.item(), action_logprob.item()
 
-    def evaluate(self, batch_graph_feature, batch_pairwise_feature, batch_action, batch_mask):
+    def evaluate(self,
+                 batch_graph_feature=None,
+                 batch_pairwise_feature=None,
+                 batch_action=None,
+                 batch_mask=None):
+
         batch_size = batch_graph_feature.num_graphs
         x_dict, edge_index_dict = batch_graph_feature.x_dict, batch_graph_feature.edge_index_dict
 
@@ -127,12 +147,15 @@ class CTScheduler(nn.Module):
         h_operations_padding = h_operations.unsqueeze(-2).expand(-1, -1, self.num_cranes, -1)
         h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_padding)
 
-        h_added = batch_pairwise_feature
-        for i in range(self.num_HGT_layers):
-            h_added = self.fc[i](h_added)
-            h_added = F.elu(h_added)
+        if self.use_communication:
+            h_added = batch_pairwise_feature
+            for i in range(self.num_HGT_layers):
+                h_added = self.fc[i](h_added)
+                h_added = F.elu(h_added)
 
-        h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
+            h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
+        else:
+            h_actions = torch.cat((h_cranes_padding, h_operations_padding), dim=-1)
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:

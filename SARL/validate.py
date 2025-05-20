@@ -7,9 +7,11 @@ from Environment.environment import Factory
 def evaluate(fjsp_agent, ct_agent, val_dir):
     if fjsp_agent.name == "RL":
         fjsp_agent.network.eval()
+        use_communication = True
         device = fjsp_agent.device
     if ct_agent.name == "RL":
         ct_agent.network.eval()
+        use_communication = ct_agent.use_communication
         device = ct_agent.device
 
     val_paths = os.listdir(val_dir)
@@ -24,6 +26,7 @@ def evaluate(fjsp_agent, ct_agent, val_dir):
                           device=device,
                           algorithm=(fjsp_agent.name, ct_agent.name),
                           use_recording=False,
+                          use_communication=use_communication,
                           return_global_state=False)
 
             fjsp_state, _ = env.reset()

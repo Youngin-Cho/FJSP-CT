@@ -47,6 +47,8 @@ class Factory:
                  device='cpu',
                  algorithm=('RL', 'RL'),
                  use_recording=False,
+                 use_centralized_scheduling=False,
+                 use_communication=True,
                  return_global_state=False,
                  global_state_encoding="EP"):
 
@@ -55,6 +57,8 @@ class Factory:
         self.device = device
         self.algorithm = algorithm
         self.use_recording = use_recording
+        self.use_centralized_scheduling = use_centralized_scheduling
+        self.use_communication=use_communication
         self.return_global_state = return_global_state
         self.global_state_encoding = global_state_encoding
 
@@ -166,7 +170,7 @@ class Factory:
             self.global_buffer_feature_dim = 4
             self.global_output_feature_dim = 4
             self.global_operation_feature_dim = 13
-            # self.global_pairwise_feature_dim = 13
+            self.global_pairwise_feature_dim = 8
 
             self.global_meta_data = (
                 ["crane", "machine", "buffer", "output", "operation"],
@@ -360,42 +364,43 @@ class Factory:
                                                and target_coord[0] > self.x_max - self.safety_margin) or
                                               (current_coord[0] > self.x_max - self.safety_margin
                                                and target_coord[0] < self.safety_margin))
-                    flag_crane_availability = self._get_cs_mask(job, name).any()
+                    flag_crane_availability = self._get_cs_mask(job, name)[:, operation.id]
 
-                    if category == 1:
-                        if operation is not None:
-                            flag_eligibility = int(operation.get_processing_time(local_id)) != 0
+                    for crane_id in range(self.num_cranes):
+                        if category == 1:
+                            if operation is not None:
+                                flag_eligibility = int(operation.get_processing_time(local_id)) != 0
 
-                            mask_machine[self.decision_id[global_id], job.id] \
-                                = (flag_eligibility & flag_availability
-                                   & flag_accessibility & flag_crane_availability)
+                                mask_machine[self.decision_id[global_id], job.id, crane_id] \
+                                    = (flag_eligibility & flag_availability
+                                       & flag_accessibility & flag_crane_availability[crane_id])
 
-                            mask_machine_relaxed[self.decision_id[global_id], job.id] \
-                                = (flag_eligibility & flag_availability)
-                        else:
-                            continue
-                    elif category == 2:
-                        if job.next_location is not None:
-                            continue
-                        else:
-                            if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
-                                mask_buffer[self.decision_id[global_id], job.id] \
-                                    = flag_availability & flag_accessibility
-                                mask_buffer_relaxed[self.decision_id[global_id], job.id] \
+                                mask_machine_relaxed[self.decision_id[global_id], job.id] \
+                                    = (flag_eligibility & flag_availability)
+                            else:
+                                continue
+                        elif category == 2:
+                            if job.next_location is not None:
+                                continue
+                            else:
+                                if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
+                                    mask_buffer[self.decision_id[global_id], job.id, crane_id] \
+                                        = flag_availability & flag_accessibility
+                                    mask_buffer_relaxed[self.decision_id[global_id], job.id, crane_id] \
+                                        = flag_availability & flag_accessibility
+                                else:
+                                    # 동일한 Buffer로 이동 방지
+                                    if job.current_location != name:
+                                        mask_buffer_relaxed[self.decision_id[global_id], job.id, crane_id] \
+                                            = flag_availability & flag_accessibility
+                        elif category == 3:
+                            if operation is None:
+                                mask_output[self.decision_id[global_id], job.id, crane_id] \
                                     = flag_availability & flag_accessibility
                             else:
-                                # 동일한 Buffer로 이동 방지
-                                if job.current_location != name:
-                                    mask_buffer_relaxed[self.decision_id[global_id], job.id] \
-                                        = flag_availability & flag_accessibility
-                    elif category == 3:
-                        if operation is None:
-                            mask_output[self.decision_id[global_id], job.id] \
-                                = flag_availability & flag_accessibility
+                                continue
                         else:
                             continue
-                    else:
-                        continue
 
         # 가용 가능한 Machine이 있지만, accessibility 제약에 의해 가지 못 하는 경우 고려
         # 해당 Machine으로 이동하기 전에 다른 Buffer로 이동
@@ -603,12 +608,13 @@ class Factory:
         buffer_feature = np.zeros((self.num_buffers, self.global_buffer_feature_dim))
         output_feature = np.zeros((self.num_outputpoints, self.global_output_feature_dim))
 
-        # pairwise_feature = np.zeros((self.num_jobs,
-        #                              self.num_machines + self.num_buffers + self.num_outputpoints,
-        #                              self.num_cranes + 1,
-        #                              self.global_pairwise_feature_dim))
-        current_operations = np.zeros(self.num_jobs)
-        reorder_idx = np.zeros(self.num_machines + self.num_buffers + self.num_outputpoints)
+        if self.use_centralized_scheduling:
+            pairwise_feature = np.zeros((self.num_jobs,
+                                         self.num_machines + self.num_buffers + self.num_outputpoints,
+                                         self.num_cranes + 1,
+                                         self.global_pairwise_feature_dim))
+            current_operations = np.zeros(self.num_jobs)
+            reorder_idx = np.zeros(self.num_machines + self.num_buffers + self.num_outputpoints)
 
         edge_crane_to_crane = [[], []]
         edge_predecessor, edge_successor = [[], []], [[], []]
@@ -629,10 +635,11 @@ class Factory:
             else:
                 job = self.monitor.jobs_after_system[j]
 
-            if job.step < len(job.operations):
-                current_operations[job.id] = job.operations[job.step].id
-            else:
-                current_operations[job.id] = job.operations[-1].id
+            if self.use_centralized_scheduling:
+                if job.step < len(job.operations):
+                    current_operations[job.id] = job.operations[job.step].id
+                else:
+                    current_operations[job.id] = job.operations[-1].id
 
             # 의사결정이 필요한 job에 대하여, 해당 job의 다음 operation 작업시간 정보
             if j in self.monitor.queue_for_machine_scheduling.keys():
@@ -725,7 +732,8 @@ class Factory:
                       ycoord / self.y_max if self.y_max != 0 else 0]
 
                 if location.category == 1:
-                    reorder_idx[self.decision_id[location.global_id]] = location.local_id
+                    if self.use_centralized_scheduling:
+                        reorder_idx[self.decision_id[location.global_id]] = location.local_id
 
                     if fully_occupied:
                         proctime_compatible[:, location.local_id] = -1
@@ -748,15 +756,17 @@ class Factory:
                     machine_feature[location.local_id, 4:] = [f2, f3, f4, f5]
 
                 elif location.category == 2:
-                    reorder_idx[self.decision_id[location.global_id]] \
-                        = self.num_machines + location.local_id
+                    if self.use_centralized_scheduling:
+                        reorder_idx[self.decision_id[location.global_id]] \
+                            = self.num_machines + location.local_id
 
                     buffer_feature[location.local_id, :2] = f0
                     buffer_feature[location.local_id, 2:4] = f1
 
                 else:
-                    reorder_idx[self.decision_id[location.global_id]] \
-                        = self.num_machines + self.num_buffers + location.local_id
+                    if self.use_centralized_scheduling:
+                        reorder_idx[self.decision_id[location.global_id]] \
+                            = self.num_machines + self.num_buffers + location.local_id
 
                     output_feature[location.local_id, :2] = f0
                     output_feature[location.local_id, 2:4] = f1
@@ -837,72 +847,73 @@ class Factory:
         crane_feature[:, 5] = crane_feature[:, 5] / np.max(crane_feature[:, 5]) \
             if np.max(crane_feature[:, 5]) > 0.0 else 0.0
 
-        # # Pairwise Feature
-        # tag = np.array([(temp >= 0).any() for temp in proctime_compatible])
-        # proctime_compatible = proctime_compatible[tag] if len(tag) > 0 else None
-        #
-        # for j, job in enumerate(self.monitor.queue_for_machine_scheduling.values()):
-        #
-        #     if job.step < len(job.operations):
-        #         current_operation = job.operations[job.step]
-        #         skip = False
-        #     else:
-        #         current_operation = job.operations[-1]
-        #         skip = True
-        #
-        #     for i, location in enumerate(self.locations.values()):
-        #         if location.category == 0:
-        #             continue
-        #         else:
-        #             job_coord = self.locations[job.current_location].coord
-        #             f1 = (location.coord[0] - job_coord[0]) / self.x_max if self.x_max != 0 else 0
-        #             f2 = (location.coord[1] - job_coord[1]) / self.y_max if self.y_max != 0 else 0
-        #
-        #             for crane in self.resources.values():
-        #                 if len(crane.queue) > 0:
-        #                     last_working_order = crane.queue[-1]
-        #                 elif crane.current_working_order is not None:
-        #                     last_working_order = crane.current_working_order
-        #                 else:
-        #                     last_working_order
-        #
-        #                 if last_working_order is not None:
-        #                     crane_location = self.locations[last_working_order[2]]
-        #                     crane_coord = crane_location.coord
-        #                 else:
-        #                     crane_coord = crane.current_coord
-        #
-        #                 f3 = (crane_coord[0] - job_coord[0]) / self.x_max if self.x_max != 0 else 0
-        #                 f4 = (crane_coord[1] - job_coord[1]) / self.y_max if self.y_max != 0 else 0
-        #
-        #                 if location.category == 1:
-        #                     fully_occupied = location.check_status()
-        #
-        #                     proctime = current_operation.get_processing_time(location.local_id)
-        #                     proctime = (proctime - self.proctime_min) / (self.proctime_max - self.proctime_min)
-        #
-        #                     if (not fully_occupied) and (not skip) and (proctime >= 0):
-        #                         options = current_operation.options
-        #                         options = (options - self.proctime_min) / (self.proctime_max - self.proctime_min)
-        #
-        #                         proctime_compatible_copy = copy.copy(proctime_compatible)
-        #                         proctime_compatible_copy[:, location.local_id] = -1
-        #
-        #                         f5 = proctime
-        #                         f6 = proctime / np.max(options) if np.max(options) > 0 else 1
-        #                         f7 = proctime / np.max(proctime_compatible[:, location.local_id]) \
-        #                             if np.max(proctime_compatible[:, location.local_id]) > 0 else 1
-        #                         f8 = proctime / np.max(proctime_compatible) \
-        #                             if np.max(proctime_compatible) > 0 else 1
-        #
-        #                         pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
-        #                             = [f1, f2, f3, f4, f5, f6, f7, f8]
-        #                     else:
-        #                         pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
-        #                             = [f1, f2, f3, f4, 0, 0, 0, 0]
-        #                 else:
-        #                     pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
-        #                         = [f1, f2, f3, f4, 0, 0, 0, 0]
+        # Pairwise Feature
+        if self.use_centralized_scheduling:
+            tag = np.array([(temp >= 0).any() for temp in proctime_compatible])
+            proctime_compatible = proctime_compatible[tag] if len(tag) > 0 else None
+
+            for j, job in enumerate(self.monitor.queue_for_machine_scheduling.values()):
+
+                if job.step < len(job.operations):
+                    current_operation = job.operations[job.step]
+                    skip = False
+                else:
+                    current_operation = job.operations[-1]
+                    skip = True
+
+                for i, location in enumerate(self.locations.values()):
+                    if location.category == 0:
+                        continue
+                    else:
+                        job_coord = self.locations[job.current_location].coord
+                        f1 = (location.coord[0] - job_coord[0]) / self.x_max if self.x_max != 0 else 0
+                        f2 = (location.coord[1] - job_coord[1]) / self.y_max if self.y_max != 0 else 0
+
+                        for crane in self.resources.values():
+                            if len(crane.queue) > 0:
+                                last_working_order = crane.queue[-1]
+                            elif crane.current_working_order is not None:
+                                last_working_order = crane.current_working_order
+                            else:
+                                last_working_order
+
+                            if last_working_order is not None:
+                                crane_location = self.locations[last_working_order[2]]
+                                crane_coord = crane_location.coord
+                            else:
+                                crane_coord = crane.current_coord
+
+                            f3 = (crane_coord[0] - job_coord[0]) / self.x_max if self.x_max != 0 else 0
+                            f4 = (crane_coord[1] - job_coord[1]) / self.y_max if self.y_max != 0 else 0
+
+                            if location.category == 1:
+                                fully_occupied = location.check_status()
+
+                                proctime = current_operation.get_processing_time(location.local_id)
+                                proctime = (proctime - self.proctime_min) / (self.proctime_max - self.proctime_min)
+
+                                if (not fully_occupied) and (not skip) and (proctime >= 0):
+                                    options = current_operation.options
+                                    options = (options - self.proctime_min) / (self.proctime_max - self.proctime_min)
+
+                                    proctime_compatible_copy = copy.copy(proctime_compatible)
+                                    proctime_compatible_copy[:, location.local_id] = -1
+
+                                    f5 = proctime
+                                    f6 = proctime / np.max(options) if np.max(options) > 0 else 1
+                                    f7 = proctime / np.max(proctime_compatible[:, location.local_id]) \
+                                        if np.max(proctime_compatible[:, location.local_id]) > 0 else 1
+                                    f8 = proctime / np.max(proctime_compatible) \
+                                        if np.max(proctime_compatible) > 0 else 1
+
+                                    pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
+                                        = [f1, f2, f3, f4, f5, f6, f7, f8]
+                                else:
+                                    pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
+                                        = [f1, f2, f3, f4, 0, 0, 0, 0]
+                            else:
+                                pairwise_feature[job.id, location.global_id - self.num_inputpoints, crane.id, :] \
+                                    = [f1, f2, f3, f4, 0, 0, 0, 0]
 
         # Edge Construction
         for j in self.df_operations["Job_Index"].unique():
@@ -1037,19 +1048,22 @@ class Factory:
         graph_feature["output", "output_to_operation", "operation"].edge_index = edge_output_to_operation
         graph_feature["operation", "operation_to_output", "output"].edge_index = edge_operation_to_output
 
-        # pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
-        # current_operations = torch.from_numpy(current_operations).type(torch.long).to(self.device)
-        # reorder_idx = torch.from_numpy(reorder_idx).type(torch.long).to(self.device)
+        if self.use_centralized_scheduling:
+            pairwise_feature = torch.from_numpy(pairwise_feature).type(torch.float32).to(self.device)
+            current_operations = torch.from_numpy(current_operations).type(torch.long).to(self.device)
+            reorder_idx = torch.from_numpy(reorder_idx).type(torch.long).to(self.device)
 
         state = State()
-        state.update(graph_feature=graph_feature)
-        # mask = self._get_global_mask()
+        if self.use_centralized_scheduling:
+            mask = self._get_global_mask()
 
-        # state.update(graph_feature=graph_feature,
-        #              pairwise_feature=pairwise_feature,
-        #              current_operations=current_operations,
-        #              reorder_idx=reorder_idx,
-        #              mask=mask)
+            state.update(graph_feature=graph_feature,
+                         pairwise_feature=pairwise_feature,
+                         current_operations=current_operations,
+                         reorder_idx=reorder_idx,
+                         mask=mask)
+        else:
+            state.update(graph_feature=graph_feature)
 
         return state
 
@@ -1468,7 +1482,7 @@ class Factory:
                     crane_feature[crane.id, :] = [f1, f2, f3, f4, f5, f6]
 
                 # Dummy node
-                if self.monitor.queue_for_crane_scheduling is not None:
+                if (self.monitor.queue_for_crane_scheduling is not None) and (self.use_communication):
                     current_location = self.monitor.queue_for_crane_scheduling.current_location
                     current_coord = self.locations[current_location].coord
                     f1 = current_coord[0] / self.x_max if self.x_max != 0 else 0
@@ -1506,7 +1520,24 @@ class Factory:
                         else:
                             if (operation.id in self.monitor.operations_loading
                                     or operation.id in self.monitor.operations_unloading):
-                                location = self.locations[job.next_location]
+                                if self.monitor.queue_for_crane_scheduling is not None:
+                                    target_job = self.monitor.queue_for_crane_scheduling
+                                    target_operation = target_job.get_current_operation()
+                                    if self.use_communication:
+                                        location = self.locations[job.next_location]
+                                    else:
+                                        if target_operation is not None:
+                                            if target_operation.id == operation.id:
+                                                location = None
+                                            else:
+                                                location = self.locations[job.next_location]
+                                        else:
+                                            if target_job.operations[-1].id == operation.id:
+                                                location = self.locations[job.current_location]
+                                            else:
+                                                location = self.locations[job.next_location]
+                                else:
+                                    location = self.locations[job.next_location]
                             else:
                                 if (operation.id in self.monitor.operations_done.keys()):
                                     if operation.id == job.operations[-1].id:
@@ -1530,7 +1561,7 @@ class Factory:
 
                 # Pairwise Feature
                 job = self.monitor.queue_for_crane_scheduling
-                if job is not None:
+                if (job is not None) and self.use_communication:
                     operation = job.get_current_operation()
                     if operation is None:
                         operation = job.operations[-1]
@@ -1578,7 +1609,7 @@ class Factory:
                             edge_successor[1].append(operation.id - 1)
 
                         if k < job.step:
-                            if self.monitor.queue_for_crane_scheduling is not None:
+                            if (self.monitor.queue_for_crane_scheduling is not None) and self.use_communication:
                                 if ((self.monitor.queue_for_crane_scheduling.id == job.id)
                                     and (k == len(job.operations) - 1)):
                                     for i in range(self.num_cranes + 1):
@@ -1600,27 +1631,27 @@ class Factory:
                                         edge_crane_to_operation[0].append(crane.id)
                                         edge_crane_to_operation[1].append(operation.id)
                             else:
-                                if (k == len(job.operations) - 1) and (job.id in self.monitor.jobs_in_system.keys()):
-                                    for i in range(self.num_cranes + 1):
-                                        edge_operation_to_crane[0].append(operation.id)
-                                        edge_operation_to_crane[1].append(i)
-                                        edge_crane_to_operation[0].append(i)
-                                        edge_crane_to_operation[1].append(operation.id)
+                                # if (k == len(job.operations) - 1) and (job.id in self.monitor.jobs_in_system.keys()):
+                                #     for i in range(self.num_cranes + 1):
+                                #         edge_operation_to_crane[0].append(operation.id)
+                                #         edge_operation_to_crane[1].append(i)
+                                #         edge_crane_to_operation[0].append(i)
+                                #         edge_crane_to_operation[1].append(operation.id)
+                                # else:
+                                crane_name = operation.allocated_crane
+                                if crane_name is None:
+                                    edge_operation_to_crane[0].append(operation.id)
+                                    edge_operation_to_crane[1].append(self.num_cranes)
+                                    edge_crane_to_operation[0].append(self.num_cranes)
+                                    edge_crane_to_operation[1].append(operation.id)
                                 else:
-                                    crane_name = operation.allocated_crane
-                                    if crane_name is None:
-                                        edge_operation_to_crane[0].append(operation.id)
-                                        edge_operation_to_crane[1].append(self.num_cranes)
-                                        edge_crane_to_operation[0].append(self.num_cranes)
-                                        edge_crane_to_operation[1].append(operation.id)
-                                    else:
-                                        crane = self.resources[crane_name]
-                                        edge_operation_to_crane[0].append(operation.id)
-                                        edge_operation_to_crane[1].append(crane.id)
-                                        edge_crane_to_operation[0].append(crane.id)
-                                        edge_crane_to_operation[1].append(operation.id)
+                                    crane = self.resources[crane_name]
+                                    edge_operation_to_crane[0].append(operation.id)
+                                    edge_operation_to_crane[1].append(crane.id)
+                                    edge_crane_to_operation[0].append(crane.id)
+                                    edge_crane_to_operation[1].append(operation.id)
                         elif k == job.step:
-                            if self.monitor.queue_for_crane_scheduling is not None:
+                            if (self.monitor.queue_for_crane_scheduling is not None) and self.use_communication:
                                 if (((operation.id in self.monitor.operations_loading
                                         or operation.id in self.monitor.operations_unloading))
                                         and (self.monitor.queue_for_crane_scheduling.id != job.id)):
@@ -1645,18 +1676,32 @@ class Factory:
                             else:
                                 if ((operation.id in self.monitor.operations_loading
                                      or operation.id in self.monitor.operations_unloading)):
-                                    crane_name = operation.allocated_crane
-                                    if crane_name is None:
-                                        edge_operation_to_crane[0].append(operation.id)
-                                        edge_operation_to_crane[1].append(self.num_cranes)
-                                        edge_crane_to_operation[0].append(self.num_cranes)
-                                        edge_crane_to_operation[1].append(operation.id)
+                                    target_job = self.monitor.queue_for_crane_scheduling
+                                    if target_job is not None:
+                                        target_operation = target_job.get_current_operation()
+                                        target_operation_id = target_operation.id
                                     else:
-                                        crane = self.resources[crane_name]
-                                        edge_operation_to_crane[0].append(operation.id)
-                                        edge_operation_to_crane[1].append(crane.id)
-                                        edge_crane_to_operation[0].append(crane.id)
-                                        edge_crane_to_operation[1].append(operation.id)
+                                        target_operation_id = None
+
+                                    if target_operation_id == operation.id:
+                                        for i in range(self.num_cranes + 1):
+                                            edge_operation_to_crane[0].append(operation.id)
+                                            edge_operation_to_crane[1].append(i)
+                                            edge_crane_to_operation[0].append(i)
+                                            edge_crane_to_operation[1].append(operation.id)
+                                    else:
+                                        crane_name = operation.allocated_crane
+                                        if crane_name is None:
+                                            edge_operation_to_crane[0].append(operation.id)
+                                            edge_operation_to_crane[1].append(self.num_cranes)
+                                            edge_crane_to_operation[0].append(self.num_cranes)
+                                            edge_crane_to_operation[1].append(operation.id)
+                                        else:
+                                            crane = self.resources[crane_name]
+                                            edge_operation_to_crane[0].append(operation.id)
+                                            edge_operation_to_crane[1].append(crane.id)
+                                            edge_crane_to_operation[0].append(crane.id)
+                                            edge_crane_to_operation[1].append(operation.id)
                                 else:
                                     for i in range(self.num_cranes + 1):
                                         edge_operation_to_crane[0].append(operation.id)

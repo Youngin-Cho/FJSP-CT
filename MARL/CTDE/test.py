@@ -17,6 +17,7 @@ def get_config():
 
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
+    parser.add_argument('--no_communication', action='store_true', help="Disable communication")
 
     parser.add_argument("--num_iterations", type=int, default=10, help="number of iterations")
     parser.add_argument("--random_seed", type=int, default=42, help="random seed")
@@ -41,6 +42,7 @@ def get_config():
 def test(config):
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_recording = False if config.no_record else True
+    use_communication = False if config.use_communication else True
 
     if use_cuda:
         device = torch.device("cuda:0")
@@ -64,7 +66,11 @@ def test(config):
         instance_name = filename.split(".")[-2]
 
         data_src = data_dir + filename
-        env = Factory(data_src, algorithm=("RL", "RL"), use_recording=use_recording, return_global_state=False)
+        env = Factory(data_src,
+                      algorithm=("RL", "RL"),
+                      use_recording=use_recording,
+                      use_communication=use_communication,
+                      return_global_state=False)
 
         param_path = config.param_path
 
@@ -105,7 +111,7 @@ def test(config):
             random.seed(random_seed + i)
 
             start = time.time()
-            fjsp_state = env.reset()
+            fjsp_state, _ = env.reset()
             done = False
 
             while not done:
@@ -118,13 +124,13 @@ def test(config):
                                                     current_operations=fjsp_state.current_operations,
                                                     reorder_idx=fjsp_state.reorder_idx)
 
-                    next_ct_state, reward, done = env.step(fjsp_action)
+                    next_ct_state, _, reward, done = env.step(fjsp_action)
                 else:
                     ct_action, _ = ct_agent.act(graph_feature=ct_state.graph_feature,
                                                 pairwise_feature=ct_state.pairwise_feature,
                                                 mask=ct_state.mask)
 
-                    next_fjsp_state, reward, done = env.step(ct_action)
+                    next_fjsp_state, _, reward, done = env.step(ct_action)
 
                 if mode == "fjsp":
                     ct_state = next_ct_state

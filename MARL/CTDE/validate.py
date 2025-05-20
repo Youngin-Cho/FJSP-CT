@@ -21,6 +21,7 @@ def evaluate(agent, val_dir):
                           device=device,
                           algorithm=("RL", "RL"),
                           use_recording=False,
+                          use_communication=agent.ct_network.use_communication,
                           return_global_state=False)
 
             fjsp_state, _ = env.reset()

@@ -18,6 +18,7 @@ def get_config():
     parser.add_argument("--no_vessl", action='store_true', help="Disable VESSL")
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
+    parser.add_argument('--no_communication', action='store_true', help="Disable communication")
 
     parser.add_argument("--no_pretraining", action='store_true', help="Disable model loading")
     parser.add_argument("--fjsp_model_path", type=str, default=None, help="fjsp model file path")
@@ -57,6 +58,7 @@ def train(config):
     use_vessl = False if config.no_vessl else True
     use_saved_model = False if config.no_pretraining else True
     use_recording = False if config.no_record else True
+    use_communication = False if config.no_communication else True
 
     if use_cuda:
         device = torch.device("cuda:0")
@@ -142,6 +144,7 @@ def train(config):
                   device=device,
                   algorithm=("RL", "RL"),
                   use_recording=use_recording,
+                  use_communication=use_communication,
                   return_global_state=False)
 
     fjsp_agent = FJSPAgent(meta_data=env.fjsp_meta_data,
@@ -323,6 +326,7 @@ def train(config):
                           device=device,
                           algorithm=("RL", "RL"),
                           use_recording=use_recording,
+                          use_communication=use_communication,
                           return_global_state=False)
 
     if not use_vessl:

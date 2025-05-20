@@ -91,6 +91,7 @@ class CTAgent:
                  E_coeff,  # 엔트로피에 대한 가중치
                  use_value_clipping,
                  use_local_critic,
+                 use_communication=True,
                  device="cpu"):
 
         self.name = "RL"
@@ -103,6 +104,7 @@ class CTAgent:
         self.V_coeff = V_coeff
         self.E_coeff = E_coeff
         self.use_value_clipping = use_value_clipping
+        self.use_communication = use_communication
         self.device = device
 
         self.memory = RollOutMemory(device)
@@ -114,7 +116,8 @@ class CTAgent:
                                    num_HGT_layers=num_HGT_layers,
                                    num_actor_layers=num_actor_layers,
                                    num_critic_layers=num_critic_layers,
-                                   use_local_critic=use_local_critic).to(device)
+                                   use_local_critic=use_local_critic,
+                                   use_communication=use_communication).to(device)
         self.optimizer = optim.Adam(self.network.parameters(), lr=lr)
         self.scheduler = StepLR(optimizer=self.optimizer, step_size=lr_step, gamma=lr_decay)
         # self.scheduler = OneCycleLR(self.optimizer, max_lr=0.0001, steps_per_epoch=1, epochs=1000, anneal_strategy='linear')
@@ -125,9 +128,13 @@ class CTAgent:
     def get_action(self, state):
         self.network.eval()
         with torch.no_grad():
-            action, log_prob, value = self.network.act(graph_feature=state.graph_feature,
-                                                       pairwise_feature=state.pairwise_feature,
-                                                       mask=state.mask)
+            if self.use_communication:
+                action, log_prob, value = self.network.act(graph_feature=state.graph_feature,
+                                                           pairwise_feature=state.pairwise_feature,
+                                                           mask=state.mask)
+            else:
+                action, log_prob, value = self.network.act(graph_feature=state.graph_feature,
+                                                           mask=state.mask)
         return action, log_prob, value
 
     def train(self, last_value):
@@ -153,11 +160,17 @@ class CTAgent:
             # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
             #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
 
-            new_log_probs, new_values, dist_entropy \
-                = self.network.evaluate(batch_graph_feature=graph_features,
-                                        batch_pairwise_feature=pairwise_features,
-                                        batch_action=actions,
-                                        batch_mask=masks)
+            if self.use_communication:
+                new_log_probs, new_values, dist_entropy \
+                    = self.network.evaluate(batch_graph_feature=graph_features,
+                                            batch_pairwise_feature=pairwise_features,
+                                            batch_action=actions,
+                                            batch_mask=masks)
+            else:
+                new_log_probs, new_values, dist_entropy \
+                    = self.network.evaluate(batch_graph_feature=graph_features,
+                                            batch_action=actions,
+                                            batch_mask=masks)
 
             ratio = torch.exp(new_log_probs - log_probs)
 
