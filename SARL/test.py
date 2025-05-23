@@ -196,21 +196,21 @@ if __name__ == "__main__":
                      ("MWKR", config.ct_algorithm)]
 
     else:
-        test_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"),
-                     ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL")]
+        # test_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"),
+        #              ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL")]
 
-        # test_case = [("SPT", "SETT"), ("SPT", "TDD"), ("SPT", "TDT"),
-        #              ("MOR", "SETT"), ("MOR", "TDD"), ("MOR", "TDT"),
-        #              ("MWKR", "SETT"), ("MWKR", "TDD"), ("MWKR", "TDT"),
-        #              ("RAND", "RAND")]
+        test_case = [("SPT", "SETT"), ("SPT", "TDD"), ("SPT", "TDT"),
+                     ("MOR", "SETT"), ("MOR", "TDD"), ("MOR", "TDT"),
+                     ("MWKR", "SETT"), ("MWKR", "TDD"), ("MWKR", "TDT"),
+                     ("RAND", "RAND")]
 
-    problem_size = [(10, 5), (15, 5), (20, 5), (15, 10), (20, 10), (25, 10), (20, 15), (25, 15), (30, 15)]
+    problem_size = [(10, 5), (15, 5), (15, 10), (20, 10), (20, 15), (25, 15)]
     for num_jobs, num_machines in problem_size:
         config.num_jobs = num_jobs
         config.num_machines = num_machines
 
         config.data_dir = "./input/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
-        config.res_dir = "./output/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
+        config.res_dir = "./output/test/SARL/%d-%d/" % (config.num_jobs, config.num_machines)
 
         if not os.path.exists(config.res_dir):
             os.makedirs(config.res_dir)
@@ -229,12 +229,8 @@ if __name__ == "__main__":
                     param_dir = config.fjsp_param_dir
                     model_dir = config.fjsp_model_dir
                 else:
-                    # param_dir = ("./output/train/SARL/log/%d-%d/FJSP/%s-%s/"
-                    #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-                    # model_dir = ("./output/train/SARL/model/%d-%d/FJSP/%s-%s/"
-                    #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-                    param_dir = ("./output/train/SARL/log/20-10/FJSP/%s-%s (vc)/" % (fjsp_algorithm, ct_algorithm))
-                    model_dir = ("./output/train/SARL/model/20-10/FJSP/%s-%s (vc)/" % (fjsp_algorithm, ct_algorithm))
+                    param_dir = ("./output/train/SARL/log/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
+                    model_dir = ("./output/train/SARL/model/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
                     # param_dir = "./output/train/SARL/log/20-10/FJSP/RL-TDD/"
                     # model_dir = "./output/train/SARL/model/20-10/FJSP/RL-TDD/"
 
@@ -252,12 +248,8 @@ if __name__ == "__main__":
                     param_dir = config.ct_param_dir
                     model_dir = config.ct_model_dir
                 else:
-                    # param_dir = ("./output/train/SARL/log/%d-%d/CT/%s-%s/"
-                    #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-                    # model_dir = ("./output/train/SARL/model/%d-%d/CT/%s-%s/"
-                    #              % (config.num_jobs, config.num_machines, fjsp_algorithm, ct_algorithm))
-                    param_dir = ("./output/train/SARL/log/20-10/CT/%s-%s (vc)/" % (fjsp_algorithm, ct_algorithm))
-                    model_dir = ("./output/train/SARL/model/20-10/CT/%s-%s (vc)/" % (fjsp_algorithm, ct_algorithm))
+                    param_dir = ("./output/train/SARL/log/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
+                    model_dir = ("./output/train/SARL/model/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
                     # param_dir = "./output/train/SARL/log/20-10/CT/SPT-RL/"
                     # model_dir = "./output/train/SARL/model/20-10/CT/SPT-RL/"
 
