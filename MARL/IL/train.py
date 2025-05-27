@@ -62,7 +62,7 @@ def train(config):
     use_saved_model = False if config.no_pretraining else True
     use_recording = False if config.no_record else True
     use_communication = False if config.no_communication else True
-    use_simultaneous_training = False if config.no_simultanesous_training else True
+    use_simultaneous_training = False if config.no_simultaneous_training else True
 
     if use_cuda:
         device = torch.device("cuda:0")
