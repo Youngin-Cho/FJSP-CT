@@ -225,6 +225,9 @@ def train(config):
             writer.add_scalar("FJSP_Training/LearningRate", fjsp_agent.scheduler.get_last_lr()[0], e)
             writer.add_scalar("CT_Training/LearningRate", ct_agent.scheduler.get_last_lr()[0], e)
 
+        fjsp_step = 0
+        ct_step = 0
+
         if use_simultaneous_training:
             fjsp_train_flag = True
             ct_train_flag = True
@@ -309,24 +312,30 @@ def train(config):
                 break
 
         print("episode: %d | reward: %.4f | fjsp_loss: %.4f | ct_loss: %.4f"
-              % (e, episode_reward, fjsp_episode_average_loss / fjsp_step, ct_episode_average_loss / ct_step))
+              % (e, episode_reward,
+                 fjsp_episode_average_loss / fjsp_step if fjsp_step > 0  else 0.0,
+                 ct_episode_average_loss / ct_step if ct_step > 0  else 0.0))
 
         with open(log_dir + "fjsp_train_log.csv", 'a') as f:
             f.write('%d, %1.4f, %1.4f, %f\n'
-                    % (e, episode_reward, fjsp_episode_average_loss / fjsp_step, fjsp_agent.scheduler.get_last_lr()[0]))
+                    % (e, episode_reward,
+                       fjsp_episode_average_loss / fjsp_step if fjsp_step > 0  else 0.0,
+                       fjsp_agent.scheduler.get_last_lr()[0]))
 
         with open(log_dir + "ct_train_log.csv", 'a') as f:
             f.write('%d, %1.4f, %1.4f, %f\n'
-                    % (e, episode_reward, ct_episode_average_loss / ct_step, ct_agent.scheduler.get_last_lr()[0]))
+                    % (e, episode_reward,
+                       ct_episode_average_loss / ct_step if ct_step > 0  else 0.0,
+                       ct_agent.scheduler.get_last_lr()[0]))
 
         if use_vessl:
             vessl.log(payload={"Train/Reward": episode_reward,
-                               "FJSP_Train/Loss": fjsp_episode_average_loss / fjsp_step,
-                               "CT_Train/Loss": ct_episode_average_loss / ct_step}, step=e)
+                               "FJSP_Train/Loss": fjsp_episode_average_loss / fjsp_step if fjsp_step > 0  else 0.0,
+                               "CT_Train/Loss": ct_episode_average_loss / ct_step if ct_step > 0  else 0.0}, step=e)
         else:
             writer.add_scalar("Common/Reward", episode_reward, e)
-            writer.add_scalar("FJSP_Training/Loss", fjsp_episode_average_loss / fjsp_step, e)
-            writer.add_scalar("CT_Training/Loss", ct_episode_average_loss / ct_step, e)
+            writer.add_scalar("FJSP_Training/Loss", fjsp_episode_average_loss / fjsp_step if fjsp_step > 0  else 0.0, e)
+            writer.add_scalar("CT_Training/Loss", ct_episode_average_loss / ct_step if ct_step > 0  else 0.0, e)
 
         fjsp_agent.scheduler.step()
         ct_agent.scheduler.step()
