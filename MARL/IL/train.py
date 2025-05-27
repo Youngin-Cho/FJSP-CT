@@ -19,6 +19,9 @@ def get_config():
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
     parser.add_argument('--no_communication', action='store_true', help="Disable communication")
+    parser.add_argument("--no_simultaneous_training", action='store_true', help="Disable simultaneous training")
+
+    parser.add_argument("--num_iterations", type=int, default=10, help="number of iterations")
 
     parser.add_argument("--no_pretraining", action='store_true', help="Disable model loading")
     parser.add_argument("--fjsp_model_path", type=str, default=None, help="fjsp model file path")
@@ -59,6 +62,7 @@ def train(config):
     use_saved_model = False if config.no_pretraining else True
     use_recording = False if config.no_record else True
     use_communication = False if config.no_communication else True
+    use_simultaneous_training = False if config.no_simultanesous_training else True
 
     if use_cuda:
         device = torch.device("cuda:0")
@@ -81,6 +85,7 @@ def train(config):
 
     # 강화학습 알고리즘 관련 파라미터
     num_episodes = config.num_episodes
+    num_iterations = config.num_iterations
     lr = config.lr
     lr_decay = config.lr_decay
     lr_step = config.lr_step
@@ -220,13 +225,31 @@ def train(config):
             writer.add_scalar("FJSP_Training/LearningRate", fjsp_agent.scheduler.get_last_lr()[0], e)
             writer.add_scalar("CT_Training/LearningRate", ct_agent.scheduler.get_last_lr()[0], e)
 
-        step = 0
-        fjsp_step = 0
-        ct_step = 0
+        if use_simultaneous_training:
+            fjsp_train_flag = True
+            ct_train_flag = True
 
+            fjsp_step = 0
+            ct_step = 0
+
+            fjsp_episode_average_loss = 0.0
+            ct_episode_average_loss = 0.0
+        else:
+            if ((e - 1) // num_iterations) % 2 == 0:
+                fjsp_train_flag = True
+                ct_train_flag = False
+
+                fjsp_step = 0
+                fjsp_episode_average_loss = 0.0
+            else:
+                fjsp_train_flag = False
+                ct_train_flag = True
+
+                ct_step = 0
+                ct_episode_average_loss = 0.0
+
+        step = 0
         episode_reward = 0.0
-        fjsp_episode_average_loss = 0.0
-        ct_episode_average_loss = 0.0
 
         fjsp_state, _ = env.reset()
 
@@ -234,14 +257,16 @@ def train(config):
             mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
 
             if mode == "fjsp":
-                fjsp_step += 1
+                if fjsp_train_flag:
+                    fjsp_step += 1
 
                 fjsp_action, fjsp_log_prob, fjsp_value = fjsp_agent.get_action(fjsp_state)
 
                 next_ct_state, _, fjsp_reward, done = env.step(fjsp_action)
                 episode_reward += fjsp_reward
             else:
-                ct_step += 1
+                if ct_train_flag:
+                    ct_step += 1
 
                 ct_action, ct_log_prob, ct_value = ct_agent.get_action(ct_state)
 
@@ -249,12 +274,12 @@ def train(config):
                 episode_reward += ct_reward
 
             if mode == "fjsp":
-                if ct_step >= 1:
+                if (ct_step >= 1) and ct_train_flag:
                     ct_agent.put_sample(ct_state, ct_action, ct_reward + fjsp_reward, done, ct_log_prob, ct_value)
 
                 ct_state = next_ct_state
             else:
-                if fjsp_step >= 1:
+                if (fjsp_step >= 1) and fjsp_train_flag:
                     fjsp_agent.put_sample(fjsp_state, fjsp_action, fjsp_reward + ct_reward, done, fjsp_log_prob, fjsp_value)
 
                 fjsp_state = next_fjsp_state
