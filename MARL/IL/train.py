@@ -2,6 +2,8 @@ import os
 import json
 import torch
 import argparse
+import random
+import numpy as np
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -21,6 +23,7 @@ def get_config():
     parser.add_argument('--no_communication', action='store_true', help="Disable communication")
     parser.add_argument("--no_simultaneous_training", action='store_true', help="Disable simultaneous training")
 
+    parser.add_argument("--seed", type=int, default=42, help="random seed")
     parser.add_argument("--num_iterations", type=int, default=10, help="number of iterations")
 
     parser.add_argument("--no_pretraining", action='store_true', help="Disable model loading")
@@ -57,6 +60,11 @@ def get_config():
 
 
 def train(config):
+    random.seed(config.seed)
+    np.random.seed(config.seed)
+    torch.manual_seed(config.seed)
+    torch.cuda.manual_seed_all(config.seed)
+
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_vessl = False if config.no_vessl else True
     use_saved_model = False if config.no_pretraining else True
@@ -108,9 +116,9 @@ def train(config):
     with open(val_dir + "setting.json", 'r') as f:
         setting = json.load(f)
 
-    fjsp_model_dir = './output/train/IL/model/%d-%d/%s/' % (setting["num_jobs"], setting["num_machines"], "FJSP")
-    ct_model_dir = './output/train/IL/model/%d-%d/%s/' % (setting["num_jobs"], setting["num_machines"], "CT")
-    log_dir = './output/train/IL/log/%d-%d/' % (setting["num_jobs"], setting["num_machines"])
+    fjsp_model_dir = './output/version3/train/IL/model/%d-%d/%s/RL-RL/' % (setting["num_jobs"], setting["num_machines"], "FJSP")
+    ct_model_dir = './output/version3/train/IL/model/%d-%d/%s/RL-RL/' % (setting["num_jobs"], setting["num_machines"], "CT")
+    log_dir = './output/version3/train/IL/log/%d-%d/RL-RL/' % (setting["num_jobs"], setting["num_machines"])
 
     if not os.path.exists(fjsp_model_dir):
         os.makedirs(fjsp_model_dir)

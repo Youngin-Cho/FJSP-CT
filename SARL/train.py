@@ -2,6 +2,8 @@ import os
 import json
 import torch
 import argparse
+import random
+import numpy as np
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -21,6 +23,8 @@ def get_config():
     parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
     parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
     parser.add_argument('--no_communication', action='store_true', help="Disable communication")
+
+    parser.add_argument("--seed", type=int, default=42, help="random seed")
 
     parser.add_argument("--no_pretraining", action='store_true', help="Disable model loading")
     parser.add_argument("--fjsp_model_path", type=str, default=None, help="fjsp model file path")
@@ -59,6 +63,11 @@ def get_config():
 
 
 def train(config):
+    random.seed(config.seed)
+    np.random.seed(config.seed)
+    torch.manual_seed(config.seed)
+    torch.cuda.manual_seed_all(config.seed)
+
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_vessl = False if config.no_vessl else True
     use_saved_model = False if config.no_pretraining else True
@@ -116,8 +125,8 @@ def train(config):
     if config.ct_algorithm == "RL":
         name = (setting["num_jobs"], setting["num_machines"], "CT", config.fjsp_algorithm, config.ct_algorithm)
 
-    model_dir = './output/train/SARL/model/%d-%d/%s/%s-%s/' % name
-    log_dir = './output/train/SARL/log/%d-%d/%s/%s-%s/' % name
+    model_dir = './output/version3/train/SARL/model/%d-%d/%s/%s-%s/' % name
+    log_dir = './output/version3/train/SARL/log/%d-%d/%s/%s-%s/' % name
 
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
