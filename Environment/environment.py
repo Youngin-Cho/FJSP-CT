@@ -231,7 +231,7 @@ class Factory:
             self.scheduling_mode = "crane"
         else:
             crane_id = action % (self.num_cranes + 1)
-            location_id = action // (self.num_cranes + 1)
+            operation_id = action // (self.num_cranes + 1)
 
             job = self.monitor.remove_from_queue(scheduling_mode=self.scheduling_mode)
             operation = job.get_current_operation()
@@ -364,9 +364,13 @@ class Factory:
                                                and target_coord[0] > self.x_max - self.safety_margin) or
                                               (current_coord[0] > self.x_max - self.safety_margin
                                                and target_coord[0] < self.safety_margin))
-                    flag_crane_availability = self._get_cs_mask(job, name)[:, operation.id]
 
-                    for crane_id in range(self.num_cranes):
+                    if operation is not None:
+                        flag_crane_availability = self._get_cs_mask(job, name)[:, operation.id]
+                    else:
+                        flag_crane_availability = self._get_cs_mask(job, name)[:, job.operations[-1].id]
+
+                    for crane_id in range(self.num_cranes + 1):
                         if category == 1:
                             if operation is not None:
                                 flag_eligibility = int(operation.get_processing_time(local_id)) != 0
@@ -384,19 +388,21 @@ class Factory:
                                 continue
                             else:
                                 if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
-                                    mask_buffer[self.decision_id[global_id], job.id, crane_id] \
-                                        = flag_availability & flag_accessibility
-                                    mask_buffer_relaxed[self.decision_id[global_id], job.id, crane_id] \
-                                        = flag_availability & flag_accessibility
+                                    if crane_id != self.num_cranes:
+                                        mask_buffer[self.decision_id[global_id], job.id, crane_id] \
+                                            = flag_availability & flag_accessibility
+                                        mask_buffer_relaxed[self.decision_id[global_id], job.id, crane_id] \
+                                            = flag_availability & flag_accessibility
                                 else:
-                                    # 동일한 Buffer로 이동 방지
-                                    if job.current_location != name:
+                                    # 동일한 Buffer로 이동 방지 --> 같은 열의 버퍼로 이동하지 않게 변경 필요
+                                    if (job.current_location != name) and (crane_id != self.num_cranes):
                                         mask_buffer_relaxed[self.decision_id[global_id], job.id, crane_id] \
                                             = flag_availability & flag_accessibility
                         elif category == 3:
                             if operation is None:
-                                mask_output[self.decision_id[global_id], job.id, crane_id] \
-                                    = flag_availability & flag_accessibility
+                                if crane_id != self.num_cranes:
+                                    mask_output[self.decision_id[global_id], job.id, crane_id] \
+                                        = flag_availability & flag_accessibility
                             else:
                                 continue
                         else:
@@ -405,8 +411,8 @@ class Factory:
         # 가용 가능한 Machine이 있지만, accessibility 제약에 의해 가지 못 하는 경우 고려
         # 해당 Machine으로 이동하기 전에 다른 Buffer로 이동
         if ((~mask_machine) & mask_machine_relaxed).any():
-            rows, cols = np.where((~mask_machine) & mask_machine_relaxed)
-            mask_buffer[:, cols] = mask_buffer_relaxed[:, cols]
+            first_dims, second_dims, third_dims = np.where((~mask_machine) & mask_machine_relaxed)
+            mask_buffer[:, second_dims, :] = mask_buffer_relaxed[:, second_dims, :]
 
         if (mask_machine | mask_output).any():
             mask = mask_machine | mask_output
@@ -414,6 +420,8 @@ class Factory:
             mask = mask_buffer
 
         mask = torch.tensor(mask, dtype=torch.bool).to(self.device)
+
+        return mask
 
     def _get_ms_mask(self):
         num_rows = self.num_machines + self.num_buffers + self.num_outputpoints

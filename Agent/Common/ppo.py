@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import StepLR
 from torch_geometric.data import Batch
 from Agent.FlexibleJobShop.network import FJSPScheduler
 from Agent.CraneTransportation.network import CTScheduler
-from Agent.Common.network import GlobalCritic
+from Agent.Common.network import GlobalScheduler, GlobalCritic
 
 
 class RollOutMemory:
@@ -24,6 +24,8 @@ class RollOutMemory:
         self.global_graph_features = []
         self.global_fjsp_graph_features = []
         self.global_ct_graph_features = []
+        self.global_pairwise_features = []
+        self.global_masks = []
         self.current_operations = []
         self.reorder_idxs = []
 
@@ -32,6 +34,8 @@ class RollOutMemory:
         self.fjsp_log_probs = []
         self.ct_actions = []
         self.ct_log_probs = []
+        self.global_actions = []
+        self.global_log_probs = []
         self.rewards = []
         self.dones = []
         self.values = []
@@ -47,6 +51,8 @@ class RollOutMemory:
         del self.global_graph_features[:]
         del self.global_fjsp_graph_features[:]
         del self.global_ct_graph_features[:]
+        del self.global_pairwise_features[:]
+        del self.global_masks[:]
         del self.current_operations[:]
         del self.reorder_idxs[:]
 
@@ -55,6 +61,8 @@ class RollOutMemory:
         del self.fjsp_log_probs[:]
         del self.ct_actions[:]
         del self.ct_log_probs[:]
+        del self.global_actions[:]
+        del self.global_log_probs[:]
         del self.rewards[:]
         del self.dones[:]
         del self.values[:]
@@ -67,6 +75,8 @@ class RollOutMemory:
             fjsp_log_prob=None,
             ct_action=None,
             ct_log_prob=None,
+            global_action=None,
+            global_log_prob=None,
             reward=None,
             done=None,
             value=None):
@@ -90,6 +100,11 @@ class RollOutMemory:
                 self.global_ct_graph_features.append(global_state[1])
             else:
                 self.global_graph_features.append(global_state.graph_feature)
+                if global_state.pairwise_feature is not None:
+                    self.global_pairwise_features.append(global_state.pairwise_feature.unsqueeze(0))
+                    self.global_masks.append(global_state.mask.unsqueeze(0))
+                    self.current_operations.append(global_state.current_operations.unsqueeze(0))
+                    self.reorder_idxs.append(global_state.reorder_idx.unsqueeze(0))
 
         # other variables
         if fjsp_action is not None:
@@ -99,6 +114,10 @@ class RollOutMemory:
         if ct_action is not None:
             self.ct_actions.append([ct_action])
             self.ct_log_probs.append([ct_log_prob])
+
+        if global_action is not None:
+            self.global_actions.append([global_action])
+            self.global_log_probs.append([global_log_prob])
 
         self.rewards.append([reward])
         self.dones.append([not done])
@@ -111,14 +130,10 @@ class RollOutMemory:
             fjsp_graph_features = Batch.from_data_list(self.fjsp_graph_features).to(self.device)
             fjsp_pairwise_features = torch.concat(self.fjsp_pairwise_features).to(self.device)
             fjsp_masks = torch.concat(self.fjsp_masks).to(self.device)
-            current_operations = torch.concat(self.current_operations).to(self.device)
-            reorder_idxs = torch.concat(self.reorder_idxs).to(self.device)
         else:
             fjsp_graph_features = None
             fjsp_pairwise_features = None
             fjsp_masks = None
-            current_operations = None
-            reorder_idxs = None
 
         if len(self.ct_graph_features) > 0:
             ct_graph_features = Batch.from_data_list(self.ct_graph_features).to(self.device)
@@ -133,6 +148,13 @@ class RollOutMemory:
             global_graph_features = Batch.from_data_list(self.global_graph_features).to(self.device)
         else:
             global_graph_features = None
+
+        if len(self.global_pairwise_features) > 0:
+            global_pairwise_features = torch.concat(self.global_pairwise_features).to(self.device)
+            global_masks = torch.concat(self.global_masks).to(self.device)
+        else:
+            global_pairwise_features = None
+            global_masks = None
 
         if len(self.global_fjsp_graph_features) > 0:
             global_fjsp_graph_features = Batch.from_data_list(self.global_fjsp_graph_features).to(self.device)
@@ -155,13 +177,28 @@ class RollOutMemory:
             ct_actions = None
             ct_log_probs = None
 
+        if len(self.global_actions) > 0:
+            global_actions = torch.from_numpy(np.array(self.global_actions)).type(torch.long).to(self.device)
+            global_log_probs = torch.from_numpy(np.array(self.global_log_probs)).type(torch.float32).to(self.device)
+        else:
+            global_actions = None
+            global_log_probs = None
+
+        if len(self.current_operations) > 0:
+            current_operations = torch.concat(self.current_operations).to(self.device)
+            reorder_idxs = torch.concat(self.reorder_idxs).to(self.device)
+        else:
+            current_operations = None
+            reorder_idxs = None
+
         rewards = torch.from_numpy(np.array(self.rewards)).type(torch.float32).to(self.device)
         dones = torch.from_numpy(np.array(self.dones)).type(torch.float32).to(self.device)
         values = torch.from_numpy(np.array(self.values)).type(torch.float32).to(self.device)
 
         return (fjsp_graph_features, fjsp_pairwise_features, fjsp_masks, fjsp_actions, fjsp_log_probs,
                 ct_graph_features, ct_pairwise_features, ct_masks, ct_actions, ct_log_probs,
-                global_graph_features, global_fjsp_graph_features, global_ct_graph_features,
+                global_graph_features, global_pairwise_features, global_masks, global_actions, global_log_probs,
+                global_fjsp_graph_features, global_ct_graph_features,
                 rewards, values, dones, current_operations, reorder_idxs)
 
 
@@ -211,8 +248,17 @@ class Agent:
         self.device = device
 
         self.memory = RollOutMemory(device)
-        if learning_approach == "CL":
-            pass
+        if learning_approach == "CTCE":
+            self.global_network = GlobalScheduler(meta_data=global_meta_data,
+                                                  state_size=global_state_size,
+                                                  num_nodes=global_num_nodes,
+                                                  embed_dim=embed_dim,
+                                                  num_heads=num_heads,
+                                                  num_HGT_layers=num_HGT_layers,
+                                                  num_actor_layers=num_actor_layers,
+                                                  num_critic_layers=num_critic_layers).to(device)
+            self.global_optimizer = optim.Adam(self.global_network.parameters(), lr=lr)
+            self.global_scheduler = StepLR(optimizer=self.global_optimizer, step_size=lr_step, gamma=lr_decay)
         elif learning_approach == "CTDE":
             self.fjsp_network = FJSPScheduler(meta_data=fjsp_meta_data,
                                               state_size=fjsp_state_size,
@@ -274,12 +320,19 @@ class Agent:
                    fjsp_log_prob=None,
                    ct_action=None,
                    ct_log_prob=None,
+                   global_action=None,
+                   global_log_prob=None,
                    reward=None,
                    done=None,
                    value=None):
 
-        if self.learning_approach == "CL":
-            pass
+        if self.learning_approach == "CTCE":
+            self.memory.put(global_state=global_state,
+                            global_action=global_action,
+                            global_log_prob=global_log_prob,
+                            reward=reward,
+                            done=done,
+                            value=value)
         elif self.learning_approach == "CTDE":
             self.memory.put(fjsp_state=fjsp_state,
                             ct_state=ct_state,
@@ -295,8 +348,15 @@ class Agent:
             pass
 
     def get_action(self, local_state=None, global_state=None, scheduling_mode="fjsp"):
-        if self.learning_approach == "CL":
-            pass
+        if self.learning_approach == "CTCE":
+            self.global_network.eval()
+            with torch.no_grad():
+                action, log_prob, value = self.global_network.act(graph_feature=global_state.graph_feature,
+                                                                  pairwise_feature=global_state.pairwise_feature,
+                                                                  mask=global_state.mask,
+                                                                  current_operations=global_state.current_operations,
+                                                                  reorder_idx=global_state.reorder_idx)
+
         elif self.learning_approach == "CTDE":
             if scheduling_mode == "fjsp":
                 self.fjsp_network.eval()
@@ -341,49 +401,91 @@ class Agent:
         return action, log_prob, value
 
     def train(self, last_value):
-        if self.learning_approach == "CL":
-            pass
+        (fjsp_graph_features,
+         fjsp_pairwise_features,
+         fjsp_masks,
+         fjsp_actions,
+         fjsp_log_probs,
+         ct_graph_features,
+         ct_pairwise_features,
+         ct_masks,
+         ct_actions,
+         ct_log_probs,
+         global_graph_features,
+         global_pairwise_features,
+         global_masks,
+         global_actions,
+         global_log_probs,
+         global_fjsp_graph_features,
+         global_ct_graph_features,
+         rewards,
+         values,
+         dones,
+         current_operations,
+         reorder_idxs) = self.memory.get(last_value)
+
+        td_target = rewards + self.gamma * values[1:] * dones
+        delta = td_target - values[:-1]
+
+        advantage_lst = []
+        advantage = 0.0
+        for delta_t in delta.flip(dims=(0,)):
+            advantage = self.gamma * self.lmbda * advantage + delta_t
+            advantage_lst.append(advantage)
+        advantage_lst.reverse()
+        advantage = torch.concat(advantage_lst).unsqueeze(-1).to(self.device)
+
+        # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
+        #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
+
+        if self.learning_approach == "CTCE":
+            self.global_network.train()
+
+            avg_loss = 0.0
+
+            for i in range(self.K_epoch):
+                new_log_probs, new_values, dist_entropy \
+                    = self.global_network.evaluate(batch_graph_feature=global_graph_features,
+                                                 batch_pairwise_feature=global_pairwise_features,
+                                                 batch_action=global_actions,
+                                                 batch_mask=global_masks,
+                                                 batch_current_operations=current_operations,
+                                                 batch_reorder_idxs=reorder_idxs)
+
+                ratio = torch.exp(new_log_probs - global_log_probs)
+
+                surr1 = ratio * advantage
+                surr2 = torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
+                policy_loss = torch.min(surr1, surr2)
+
+                if self.use_value_clipping:
+                    new_values_clipped = values[:-1] + torch.clamp(new_values - values[:-1], -self.eps_clip, self.eps_clip)
+                    value_loss_clipped = F.smooth_l1_loss(new_values_clipped, td_target)
+                    value_loss_original = F.smooth_l1_loss(new_values, td_target)
+                    value_loss = torch.max(value_loss_original, value_loss_clipped)
+                else:
+                    value_loss = F.smooth_l1_loss(new_values, td_target)
+
+                loss = - self.P_coeff * policy_loss + self.V_coeff * value_loss - self.E_coeff * dist_entropy
+
+                self.global_optimizer.zero_grad()
+                loss.mean().backward()
+                self.global_optimizer.step()
+
+                avg_loss += loss.mean().item()
+
+            self.memory.clear()
+
+            return avg_loss / self.K_epoch
+
         elif self.learning_approach == "CTDE":
             self.fjsp_network.train()
             self.ct_network.train()
             self.global_critic.train()
 
-            (fjsp_graph_features,
-             fjsp_pairwise_features,
-             fjsp_masks,
-             fjsp_actions,
-             fjsp_log_probs,
-             ct_graph_features,
-             ct_pairwise_features,
-             ct_masks,
-             ct_actions,
-             ct_log_probs,
-             global_graph_features,
-             global_fjsp_graph_features,
-             global_ct_graph_features,
-             rewards,
-             values,
-             dones,
-             current_operations,
-             reorder_idxs) = self.memory.get(last_value)
-
             avg_loss_fjsp = 0.0
             avg_loss_ct = 0.0
             avg_loss_critic = 0.0
-
-            td_target = rewards + self.gamma * values[1:] * dones
-            delta = td_target - values[:-1]
-
-            advantage_lst = []
-            advantage = 0.0
-            for delta_t in delta.flip(dims=(0,)):
-                advantage = self.gamma * self.lmbda * advantage + delta_t
-                advantage_lst.append(advantage)
-            advantage_lst.reverse()
-            advantage = torch.concat(advantage_lst).unsqueeze(-1).to(self.device)
-
-            # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
-            #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
 
             for i in range(self.K_epoch):
                 fjsp_new_log_probs, fjsp_dist_entropy \
@@ -455,7 +557,10 @@ class Agent:
 
     def save_network(self, e, file_dir):
         if self.learning_approach == "CL":
-            pass
+            torch.save({"episode": e,
+                        "model_state_dict": self.global_network.state_dict(),
+                        "optimizer_state_dict": self.global_optimizer.state_dict()},
+                       file_dir + "episode-%d.pt" % e)
         elif self.learning_approach == "CTDE":
             torch.save({"episode": e,
                         "model_state_dict": self.fjsp_network.state_dict(),

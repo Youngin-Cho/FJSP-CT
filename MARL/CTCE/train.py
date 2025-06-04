@@ -1,0 +1,291 @@
+import os
+import json
+import torch
+import argparse
+import random
+import numpy as np
+
+from torch.utils.tensorboard import SummaryWriter
+
+from Environment.environment import Factory
+from Environment.data import DataGenerator
+from Agent.Common.ppo import Agent
+from MARL.CTCE.validate import evaluate
+
+
+def get_config():
+    parser = argparse.ArgumentParser(description="FJSP-CT")
+
+    parser.add_argument("--no_vessl", action='store_true', help="Disable VESSL")
+    parser.add_argument('--no_cuda', action='store_true', help='Disable CUDA')
+    parser.add_argument('--no_record', action='store_true', help="Disable Recording events")
+
+    parser.add_argument("--seed", type=int, default=42, help="random seed")
+
+    parser.add_argument("--no_pretraining", action='store_true', help="Disable model loading")
+    parser.add_argument("--model_path", type=str, default=None, help="model file path")
+
+    parser.add_argument("--embed_dim", type=int, default=128, help="node embedding dimension")
+    parser.add_argument("--num_heads", type=int, default=4, help="multi-head attention in HGT layers")
+    parser.add_argument("--num_HGT_layers", type=int, default=2, help="number of HGT layers")
+    parser.add_argument("--num_actor_layers", type=int, default=2, help="number of actor layers")
+    parser.add_argument("--num_critic_layers", type=int, default=2, help="number of critic layers")
+
+    parser.add_argument("--num_episodes", type=int, default=2000, help="number of episodes")
+    parser.add_argument("--lr", type=float, default=0.0001, help="learning rate")
+    parser.add_argument("--lr_decay", type=float, default=1.0, help="learning rate decay ratio")
+    parser.add_argument("--lr_step", type=int, default=100, help="step size to reduce learning rate")
+    parser.add_argument("--gamma", type=float, default=0.98, help="discount ratio")
+    parser.add_argument("--lmbda", type=float, default=0.95, help="GAE parameter")
+    parser.add_argument("--eps_clip", type=float, default=0.1, help="clipping parameter")
+    parser.add_argument("--K_epoch", type=int, default=5, help="optimization epoch")
+    parser.add_argument("--T_horizon", type=int, default=20, help="the number of steps to obtain samples")
+    parser.add_argument("--P_coeff", type=float, default=1, help="coefficient for policy loss")
+    parser.add_argument("--V_coeff", type=float, default=0.5, help="coefficient for value loss")
+    parser.add_argument("--E_coeff", type=float, default=0.01, help="coefficient for entropy loss")
+    parser.add_argument('--no_value_clipping', action='store_true', help="Disable value clipping")
+    parser.add_argument('--global_state_encoding', type=str, default="EP", help="global state encoding method")
+
+    parser.add_argument("--eval_every", type=int, default=50, help="Evaluate every x episodes")
+    parser.add_argument("--save_every", type=int, default=500, help="Save a model every x episodes")
+    parser.add_argument("--reset_every", type=int, default=1, help="Generate new instances every x episodes")
+
+    parser.add_argument("--val_dir", type=str, default=None, help="directory where the validation data are stored")
+
+    return parser.parse_args()
+
+
+def train(config):
+    random.seed(config.seed)
+    np.random.seed(config.seed)
+    torch.manual_seed(config.seed)
+    torch.cuda.manual_seed_all(config.seed)
+
+    use_cuda = torch.cuda.is_available() and not config.no_cuda
+    use_vessl = False if config.no_vessl else True
+    use_saved_model = False if config.no_pretraining else True
+    use_recording = False if config.no_record else True
+
+    if use_cuda:
+        device = torch.device("cuda:0")
+    else:
+        device = torch.device("cpu")
+
+    if use_vessl:
+        import vessl
+        vessl.init(organization="snu-eng-dgx", project="fjsp-ct", hp=config)
+
+    model_path = config.model_path
+
+    # 인공신경망 관련 파라미터
+    embed_dim = config.embed_dim
+    num_heads = config.num_heads
+    num_HGT_layers = config.num_HGT_layers
+    num_actor_layers = config.num_actor_layers
+    num_critic_layers = config.num_critic_layers
+
+    # 강화학습 알고리즘 관련 파라미터
+    num_episodes = config.num_episodes
+    lr = config.lr
+    lr_decay = config.lr_decay
+    lr_step = config.lr_step
+    gamma = config.gamma
+    lmbda = config.lmbda
+    eps_clip = config.eps_clip
+    K_epoch = config.K_epoch
+    T_horizon = config.T_horizon
+    P_coeff = config.P_coeff
+    V_coeff = config.V_coeff
+    E_coeff = config.E_coeff
+    use_value_clipping = False if config.no_value_clipping else True
+
+    eval_every = config.eval_every
+    save_every = config.save_every
+    reset_every = config.reset_every
+
+    val_dir = config.val_dir
+
+    with open(val_dir + "setting.json", 'r') as f:
+        setting = json.load(f)
+
+    model_dir = './output/train/MARL/model/%d-%d/CTCE/' % (setting["num_jobs"], setting["num_machines"])
+    log_dir = './output/train/MARL/log/%d-%d/CTCE/' % (setting["num_jobs"], setting["num_machines"])
+
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    with open(log_dir + "parameters.json", 'w') as f:
+        json.dump(vars(config), f, indent=4)
+
+    data_src = DataGenerator(num_inputs=setting["num_inputs"],
+                             num_outputs=setting["num_outputs"],
+                             num_machines=setting["num_machines"],
+                             num_buffers=setting["num_buffers"],
+                             num_jobs=setting["num_jobs"],
+                             num_options_min=setting["num_options_min"],
+                             num_options_max=setting["num_options_max"],
+                             num_operations_min=setting["num_operations_min"],
+                             num_operations_max=setting["num_operations_max"],
+                             proctime_min=setting["proctime_min"],
+                             proctime_max=setting["proctime_max"],
+                             inter_arrival_time=setting["inter_arrival_time"],
+                             num_cranes=setting["num_cranes"],
+                             safety_margin=setting["safety_margin"],
+                             x_velocity=setting["x_velocity"],
+                             y_velocity=setting["y_velocity"],
+                             num_rows=setting["num_rows"],
+                             x_spacing=setting["x_spacing"],
+                             y_spacing=setting["y_spacing"],
+                             division=setting["division"])
+
+    env = Factory(data_src,
+                  device=device,
+                  algorithm=("RL", "RL"),
+                  use_recording=use_recording,
+                  use_centralized_scheduling=True,
+                  return_global_state=True,
+                  global_state_encoding="EP")
+
+    agent = Agent(learning_approach="CTCE",
+                  global_state_encoding="EP",
+                  global_meta_data=env.global_meta_data,
+                  global_state_size=env.global_state_size,
+                  global_num_nodes=env.global_num_nodes,
+                  embed_dim=embed_dim,
+                  num_heads=num_heads,
+                  num_HGT_layers=num_HGT_layers,
+                  num_actor_layers=num_actor_layers,
+                  num_critic_layers=num_critic_layers,
+                  lr=lr,
+                  lr_decay=lr_decay,
+                  lr_step=lr_step,
+                  gamma=gamma,
+                  lmbda=lmbda,
+                  eps_clip=eps_clip,
+                  K_epoch=K_epoch,
+                  P_coeff=P_coeff,
+                  V_coeff=V_coeff,
+                  E_coeff=E_coeff,
+                  use_value_clipping=use_value_clipping,
+                  device=device)
+
+    if not use_vessl:
+        writer = SummaryWriter(log_dir)
+
+    if use_saved_model:
+        checkpoint = torch.load(model_path)
+        agent.global_network.load_state_dict(checkpoint['model_state_dict'])
+        agent.global_optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+    with open(log_dir + "train_log.csv", 'w') as f:
+        f.write('episode, reward, loss, lr\n')
+
+    with open(log_dir + "validation_log.csv", 'w') as f:
+        f.write('episode, makespan\n')
+
+    for e in range(1, num_episodes + 1):
+        if use_vessl:
+            vessl.log(payload={"Train/LearnigRate": agent.global_scheduler.get_last_lr()[0]}, step=e)
+        else:
+            writer.add_scalar("Training/LearningRate", agent.global_scheduler.get_last_lr()[0], e)
+
+        step = 0
+        episode_reward = 0.0
+        episode_average_loss = 0.0
+
+        _, global_state = env.reset()
+
+        while True:
+            mode = "fjsp" if env.scheduling_mode == "machine" else "ct"
+
+            if mode == "fjsp":
+                action, log_prob, value = agent.get_action(global_state=global_state)
+
+                job_id = action // int((env.num_machines + env.num_buffers + env.num_outputpoints) * (env.num_cranes + 1))
+                location_id = (action % int((env.num_machines + env.num_buffers + env.num_outputpoints) * (env.num_cranes + 1))) // (env.num_cranes + 1)
+                crane_id = (action % int((env.num_machines + env.num_buffers + env.num_outputpoints) * (env.num_cranes + 1))) % (env.num_cranes + 1)
+
+                fjsp_action = job_id * (env.num_machines + env.num_buffers + env.num_outputpoints) + location_id
+                _, _, fjsp_reward, done = env.step(fjsp_action)
+                episode_reward += fjsp_reward
+            else:
+                ct_action = env.num_operations * (env.num_cranes + 1) + crane_id
+
+                _, next_global_state, ct_reward, done = env.step(ct_action)
+                episode_reward += ct_reward
+
+            if mode == "ct":
+                agent.put_sample(global_state=global_state,
+                                 global_action=action,
+                                 global_log_prob=log_prob,
+                                 reward=fjsp_reward + ct_reward,
+                                 done=done,
+                                 value=value)
+
+                global_state = next_global_state
+
+            if done or len(agent.memory.global_actions) == T_horizon:
+                if done:
+                    last_value = 0.0
+                else:
+                    _, _, last_value = agent.get_action(global_state=global_state)
+
+                if len(agent.memory.global_actions) > 0:
+                    episode_average_loss += agent.train(last_value)
+                else:
+                    agent.memory.clear()
+
+            step += 1
+
+            if done:
+                break
+
+        print("episode: %d | reward: %.4f | loss: %.4f"
+              % (e, episode_reward, episode_average_loss / step))
+
+        with open(log_dir + "train_log.csv", 'a') as f:
+            f.write('%d, %1.4f, %1.4f, %f\n'
+                    % (e, episode_reward, episode_average_loss / step, agent.global_scheduler.get_last_lr()[0]))
+
+        if use_vessl:
+            vessl.log(payload={"Train/Reward": episode_reward,
+                               "Train/Loss": episode_average_loss / step}, step=e)
+        else:
+            writer.add_scalar("Training/Reward", episode_reward, e)
+            writer.add_scalar("Training/Loss", episode_average_loss / step, e)
+
+        agent.global_scheduler.step()
+
+        if e == 1 or e % eval_every == 0:
+            average_makespan = evaluate(agent, val_dir)
+
+            with open(log_dir + "validation_log.csv", 'a') as f:
+                f.write('%d,%1.4f\n' % (e, average_makespan))
+
+            if use_vessl:
+                vessl.log(payload={"Perf/Makespan": average_makespan}, step=e)
+            else:
+                writer.add_scalar("Validation/Makespan", average_makespan, e)
+
+        if e % save_every == 0:
+            agent.save_network(e, model_dir)
+
+        if e % reset_every == 0:
+            env = Factory(data_src,
+                          device=device,
+                          algorithm=("RL", "RL"),
+                          use_recording=use_recording,
+                          use_centralized_scheduling=True,
+                          return_global_state=True,
+                          global_state_encoding="EP")
+
+    if not use_vessl:
+        writer.close()
+
+
+if __name__ == "__main__":
+    config = get_config()
+    train(config)
