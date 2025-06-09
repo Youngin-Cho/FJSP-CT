@@ -246,7 +246,11 @@ class Factory:
             self.locations[current_location].call_for_crane_scheduling[job.id].succeed(crane)
             self.scheduling_mode = "machine"
 
-            mask = self._get_ms_mask()
+            if self.use_centralized_scheduling:
+                mask = self._get_global_mask()
+            else:
+                mask = self._get_ms_mask()
+
             if mask.any():
                 self.monitor.set_scheduling_flag(scheduling_mode="machine")
 
@@ -257,11 +261,17 @@ class Factory:
                 while self.sim_env.now in [event[0] for event in self.sim_env._queue]:
                     self.sim_env.step()
 
-                if self.scheduling_mode == "machine":
-                    mask = self._get_ms_mask()
+                if self.use_centralized_scheduling:
+                    if self.scheduling_mode == "machine":
+                        mask = self._get_global_mask()
+                    else:
+                        break
                 else:
-                    job = self.monitor.queue_for_crane_scheduling
-                    mask = self._get_cs_mask(job, job.next_location)
+                    if self.scheduling_mode == "machine":
+                        mask = self._get_ms_mask()
+                    else:
+                        job = self.monitor.queue_for_crane_scheduling
+                        mask = self._get_cs_mask(job, job.next_location)
 
                 if mask.any():
                     self.mask = mask
@@ -379,7 +389,7 @@ class Factory:
                                     = (flag_eligibility & flag_availability
                                        & flag_accessibility & flag_crane_availability[crane_id])
 
-                                mask_machine_relaxed[self.decision_id[global_id], job.id] \
+                                mask_machine_relaxed[self.decision_id[global_id], job.id, crane_id] \
                                     = (flag_eligibility & flag_availability)
                             else:
                                 continue
@@ -388,21 +398,19 @@ class Factory:
                                 continue
                             else:
                                 if (operation is None) or (not operation.id in self.monitor.operations_waiting.keys()):
-                                    if crane_id != self.num_cranes:
-                                        mask_buffer[self.decision_id[global_id], job.id, crane_id] \
-                                            = flag_availability & flag_accessibility
-                                        mask_buffer_relaxed[self.decision_id[global_id], job.id, crane_id] \
-                                            = flag_availability & flag_accessibility
+                                    mask_buffer[self.decision_id[global_id], job.id, crane_id] \
+                                        = flag_availability & flag_accessibility & flag_crane_availability[crane_id]
+                                    mask_buffer_relaxed[self.decision_id[global_id], job.id, crane_id] \
+                                        = flag_availability & flag_accessibility & flag_crane_availability[crane_id]
                                 else:
                                     # 동일한 Buffer로 이동 방지 --> 같은 열의 버퍼로 이동하지 않게 변경 필요
-                                    if (job.current_location != name) and (crane_id != self.num_cranes):
+                                    if job.current_location != name:
                                         mask_buffer_relaxed[self.decision_id[global_id], job.id, crane_id] \
-                                            = flag_availability & flag_accessibility
+                                            = flag_availability & flag_accessibility & flag_crane_availability[crane_id]
                         elif category == 3:
                             if operation is None:
-                                if crane_id != self.num_cranes:
-                                    mask_output[self.decision_id[global_id], job.id, crane_id] \
-                                        = flag_availability & flag_accessibility
+                                mask_output[self.decision_id[global_id], job.id, crane_id] \
+                                    = flag_availability & flag_accessibility & flag_crane_availability[crane_id]
                             else:
                                 continue
                         else:
