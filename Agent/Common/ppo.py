@@ -556,7 +556,7 @@ class Agent:
             pass
 
     def save_network(self, e, file_dir):
-        if self.learning_approach == "CL":
+        if self.learning_approach == "CTCE":
             torch.save({"episode": e,
                         "model_state_dict": self.global_network.state_dict(),
                         "optimizer_state_dict": self.global_optimizer.state_dict()},
