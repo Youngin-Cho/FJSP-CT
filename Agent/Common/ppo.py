@@ -412,7 +412,7 @@ class Agent:
                             ).squeeze()
 
                         if self.use_coma_advantage:
-                            value = value.numpy()
+                            value = value.cpu().numpy()
                         else:
                             value = value.item()
 
