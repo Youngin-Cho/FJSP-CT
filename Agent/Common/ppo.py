@@ -556,9 +556,9 @@ class Agent:
                     ct_index = fjsp_actions.unsqueeze(-1).expand(-1, 1, 3)
 
                     fjsp_values = values_reshaped.gather(dim=2, index=fjsp_index).squeeze(-1)
-                    fjsp_baseline = (fjsp_values * fjsp_policy).sum().item()
+                    fjsp_baseline = (fjsp_values * fjsp_policy).sum(dim=1, keepdim=True)
                     ct_values = values_reshaped.gather(dim=1, index=ct_index).squeeze(-2)
-                    ct_baselines = (ct_values * ct_policy).sum().item()
+                    ct_baselines = (ct_values * ct_policy).sum(dim=1, keepdim=True)
 
                     joint_value = fjsp_values.gather(dim=1, index=fjsp_actions)
                     fjsp_advantage = joint_value - fjsp_baseline
