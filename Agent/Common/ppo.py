@@ -541,16 +541,19 @@ class Agent:
                                                    return_policy=True)
 
                     ##COMA advantage##
+                    ct_actions_crane = ct_actions % 3
+                    ct_actions_operation = ct_actions // 3
+
                     fjsp_policy = fjsp_policy.detach()
-                    ct_policy = ct_policy.detach()
+                    ct_policy = ct_policy.reshape(fjsp_policy.shape[0], -1, 3).detach()
+                    ct_policy = ct_policy.gather(dim=1, index=ct_actions_operation.unsqueeze(-1).expand(-1, 1, 3)).squeeze()
 
                     batch_size, num_fjsp_actions = fjsp_policy.shape
-                    _, num_ct_actions = ct_policy.shape
 
                     values_reshaped = values.squeeze()[:-1].reshape(batch_size, num_fjsp_actions, -1)
 
-                    fjsp_index = ct_actions.unsqueeze(-1).expand(-1, num_fjsp_actions, 1)
-                    ct_index = fjsp_actions.unsqueeze(-1).expand(-1, 1, num_ct_actions)
+                    fjsp_index = ct_actions_crane.unsqueeze(-1).expand(-1, num_fjsp_actions, 1)
+                    ct_index = fjsp_actions.unsqueeze(-1).expand(-1, 1, 3)
 
                     fjsp_values = values_reshaped.gather(dim=2, index=fjsp_index).squeeze()
                     fjsp_baseline = (fjsp_values * fjsp_policy).sum().item()

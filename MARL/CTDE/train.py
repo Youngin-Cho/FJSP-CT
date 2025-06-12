@@ -163,8 +163,7 @@ def train(config):
     if use_coma_advantage:
         critic_output_dim = int(env.num_jobs
                                 * (env.num_machines + env.num_buffers +env.num_outputpoints)
-                                * (env.num_cranes + 1)
-                                * env.num_operations)
+                                * (env.num_cranes + 1))
     else:
         critic_output_dim = 1
 
