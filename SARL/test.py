@@ -22,7 +22,7 @@ def get_config():
     parser.add_argument('--no_communication', action='store_true', help="Disable communication")
 
     parser.add_argument("--num_iterations", type=int, default=10, help="number of iterations")
-    parser.add_argument("--random_seed", type=int, default=42, help="random seed")
+    parser.add_argument("--seed", type=int, default=42, help="random seed")
 
     parser.add_argument("--num_jobs", type=int, default=10, help="number of jobs")
     parser.add_argument("--num_machines", type=int, default=5, help="number of machines")
@@ -55,8 +55,6 @@ def test(config):
         device = torch.device("cuda:0")
     else:
         device = torch.device("cpu")
-
-    random_seed = config.random_seed
 
     fjsp_algorithm = config.fjsp_algorithm
     ct_algorithm = config.ct_algorithm
@@ -127,7 +125,11 @@ def test(config):
             ct_agent = CTHeuristic(ct_algorithm)
 
         for i in range(config.num_iterations):
-            random.seed(random_seed + i)
+            # random.seed(random_seed + i)
+            random.seed(config.seed + 10 * i)
+            np.random.seed(config.seed + 10 * i)
+            torch.manual_seed(config.seed + 10 * i)
+            torch.cuda.manual_seed_all(config.seed + 10 * i)
 
             start = time.time()
             fjsp_state, _ = env.reset()
@@ -196,13 +198,13 @@ if __name__ == "__main__":
                      ("MWKR", config.ct_algorithm)]
 
     else:
-        # test_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"),
-        #              ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL")]
+        test_case = [("RL", "SETT"), ("RL", "TDD"), ("RL", "TDT"),
+                     ("SPT", "RL"), ("MOR", "RL"), ("MWKR", "RL")]
 
-        test_case = [("SPT", "SETT"), ("SPT", "TDD"), ("SPT", "TDT"),
-                     ("MOR", "SETT"), ("MOR", "TDD"), ("MOR", "TDT"),
-                     ("MWKR", "SETT"), ("MWKR", "TDD"), ("MWKR", "TDT"),
-                     ("RAND", "RAND")]
+        # test_case = [("SPT", "SETT"), ("SPT", "TDD"), ("SPT", "TDT"),
+        #              ("MOR", "SETT"), ("MOR", "TDD"), ("MOR", "TDT"),
+        #              ("MWKR", "SETT"), ("MWKR", "TDD"), ("MWKR", "TDT"),
+        #              ("RAND", "RAND")]
 
     problem_size = [(10, 5), (15, 5), (15, 10), (20, 10), (20, 15), (25, 15)]
     for num_jobs, num_machines in problem_size:
@@ -210,7 +212,7 @@ if __name__ == "__main__":
         config.num_machines = num_machines
 
         config.data_dir = "./input/case1/test/%d-%d/" % (config.num_jobs, config.num_machines)
-        config.res_dir = "./output/test/SARL/%d-%d/" % (config.num_jobs, config.num_machines)
+        config.res_dir = "./output/version3/test/%d-%d/SARL/" % (config.num_jobs, config.num_machines)
 
         if not os.path.exists(config.res_dir):
             os.makedirs(config.res_dir)
@@ -229,10 +231,10 @@ if __name__ == "__main__":
                     param_dir = config.fjsp_param_dir
                     model_dir = config.fjsp_model_dir
                 else:
-                    param_dir = ("./output/train/SARL/log/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
-                    model_dir = ("./output/train/SARL/model/20-10/FJSP/%s-%s/" % (fjsp_algorithm, ct_algorithm))
-                    # param_dir = "./output/train/SARL/log/20-10/FJSP/RL-TDD/"
-                    # model_dir = "./output/train/SARL/model/20-10/FJSP/RL-TDD/"
+                    param_dir = ("./output/version3/train/SARL/20-10/%s-%s/log/" % (fjsp_algorithm, ct_algorithm))
+                    model_dir = ("./output/version3/train/SARL/20-10/%s-%s/model/" % (fjsp_algorithm, ct_algorithm))
+                    # param_dir = "./output/version3/train/SARL/20-10/RL-SETT/log/"
+                    # model_dir = "./output/version3/train/SARL/20-10/RL-SETT/model/"
 
                 episode = max(
                     int(os.path.splitext(filename)[0].split("-")[1])
@@ -248,10 +250,10 @@ if __name__ == "__main__":
                     param_dir = config.ct_param_dir
                     model_dir = config.ct_model_dir
                 else:
-                    param_dir = ("./output/train/SARL/log/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
-                    model_dir = ("./output/train/SARL/model/20-10/CT/%s-%s/" % (fjsp_algorithm, ct_algorithm))
-                    # param_dir = "./output/train/SARL/log/20-10/CT/SPT-RL/"
-                    # model_dir = "./output/train/SARL/model/20-10/CT/SPT-RL/"
+                    param_dir = ("./output/version3/train/SARL/20-10/%s-%s/log/" % (fjsp_algorithm, ct_algorithm))
+                    model_dir = ("./output/version3/train/SARL/20-10/%s-%s/model/" % (fjsp_algorithm, ct_algorithm))
+                    # param_dir = "./output/version3/train/SARL/20-10/MWKR-RL/log/"
+                    # model_dir = "./output/version3/train/SARL/20-10/MWKR-RL/model/"
 
                 episode = max(
                     int(os.path.splitext(filename)[0].split("-")[1])

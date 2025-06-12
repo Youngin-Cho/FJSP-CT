@@ -20,7 +20,7 @@ def get_config():
     parser.add_argument('--no_communication', action='store_true', help="Disable communication")
 
     parser.add_argument("--num_iterations", type=int, default=10, help="number of iterations")
-    parser.add_argument("--random_seed", type=int, default=42, help="random seed")
+    parser.add_argument("--seed", type=int, default=42, help="random seed")
 
     parser.add_argument("--num_jobs", type=int, default=10, help="number of jobs")
     parser.add_argument("--num_machines", type=int, default=5, help="number of machines")
@@ -42,14 +42,12 @@ def get_config():
 def test(config):
     use_cuda = torch.cuda.is_available() and not config.no_cuda
     use_recording = False if config.no_record else True
-    use_communication = False if config.use_communication else True
+    use_communication = False if config.no_communication else True
 
     if use_cuda:
         device = torch.device("cuda:0")
     else:
         device = torch.device("cpu")
-
-    random_seed = config.random_seed
 
     data_dir = config.data_dir
     test_paths = os.listdir(data_dir)
@@ -108,7 +106,11 @@ def test(config):
         ct_agent.load_state_dict(checkpoint['model_state_dict'])
 
         for i in range(config.num_iterations):
-            random.seed(random_seed + i)
+            # random.seed(random_seed + i)
+            random.seed(config.seed + 10 * i)
+            np.random.seed(config.seed + 10 * i)
+            torch.manual_seed(config.seed + 10 * i)
+            torch.cuda.manual_seed_all(config.seed + 10 * i)
 
             start = time.time()
             fjsp_state, _ = env.reset()
@@ -157,13 +159,11 @@ def test(config):
 if __name__ == "__main__":
     config = get_config()
 
-    test_case = [(10, 5), (15, 5), (20, 5),
-                 (15, 10), (20, 10), (25, 10),
-                 (20, 15), (25, 15), (30, 15)]
+    test_case = [(10, 5), (15, 5), (15, 10), (20, 10), (20, 15), (25, 15)]
 
     for num_jobs, num_machines in test_case:
         config.data_dir = "./input/case1/test/%d-%d/" % (num_jobs, num_machines)
-        config.res_dir = "./output/case1/test/%d-%d/CTDE/" % (num_jobs, num_machines)
+        config.res_dir = "./output/version3/test/%d-%d/MARL/CTDE/RL-RL with EP (+comm)/" % (num_jobs, num_machines)
 
         if not os.path.exists(config.res_dir):
             os.makedirs(config.res_dir)
