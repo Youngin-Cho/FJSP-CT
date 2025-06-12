@@ -544,6 +544,10 @@ class Agent:
                     ct_actions_crane = ct_actions % 3
                     ct_actions_operation = ct_actions // 3
 
+                    if len(fjsp_policy.shape) == 1:
+                        fjsp_policy.unsqueeze(0)
+                        ct_policy.unsqueeze(0)
+
                     fjsp_policy = fjsp_policy.detach()
                     ct_policy = ct_policy.reshape(fjsp_policy.shape[0], -1, 3).detach()
                     ct_policy = ct_policy.gather(dim=1, index=ct_actions_operation.unsqueeze(-1).expand(-1, 1, 3)).squeeze()
