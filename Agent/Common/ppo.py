@@ -555,9 +555,9 @@ class Agent:
                     fjsp_index = ct_actions_crane.unsqueeze(-1).expand(-1, num_fjsp_actions, 1)
                     ct_index = fjsp_actions.unsqueeze(-1).expand(-1, 1, 3)
 
-                    fjsp_values = values_reshaped.gather(dim=2, index=fjsp_index).squeeze()
+                    fjsp_values = values_reshaped.gather(dim=2, index=fjsp_index).squeeze(-1)
                     fjsp_baseline = (fjsp_values * fjsp_policy).sum().item()
-                    ct_values = values_reshaped.gather(dim=1, index=ct_index).squeeze()
+                    ct_values = values_reshaped.gather(dim=1, index=ct_index).squeeze(-2)
                     ct_baselines = (ct_values * ct_policy).sum().item()
 
                     joint_value = fjsp_values.gather(dim=1, index=fjsp_actions)
@@ -613,7 +613,7 @@ class Agent:
                     td_target = rewards + self.gamma * expected_values
 
                     new_values = new_values.reshape(batch_size, num_fjsp_actions, -1)
-                    new_values = new_values.gather(dim=2, index=fjsp_index).squeeze()
+                    new_values = new_values.gather(dim=2, index=fjsp_index).squeeze(-1)
                     new_values = new_values.gather(dim=1, index=fjsp_actions)
 
                 if self.use_value_clipping:
