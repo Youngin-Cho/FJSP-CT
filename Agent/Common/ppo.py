@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import StepLR
 from torch_geometric.data import Batch
 from Agent.FlexibleJobShop.network import FJSPScheduler
 from Agent.CraneTransportation.network import CTScheduler
-from Agent.Common.network import GlobalScheduler, GlobalCritic
+from Agent.Common.network import GlobalScheduler, GlobalCritic, COMACritic
 
 
 class RollOutMemory:
@@ -216,6 +216,7 @@ class Agent:
                  global_state_size=None,  # 노드 타입 별 특성 벡터의 크기
                  global_num_nodes=None,  # 노드 타입 별 그래프 내 노드의 개수
                  embed_dim=128,  # node embedding 크기
+                 critic_output_dim=1,
                  num_heads=4,  # HGT layer에서의 attention head의 수
                  num_HGT_layers=2,  # HGT layer의 개수
                  num_actor_layers=2,  # actor layer의 개수
@@ -231,6 +232,7 @@ class Agent:
                  V_coeff=0.5,  # 가치함수 학습에 대한 가중치
                  E_coeff=0.1,  # 엔트로피에 대한 가중치
                  use_value_clipping=True,
+                 use_coma_advantage=False,
                  device="cpu"):
 
         self.name = "RL"
@@ -245,6 +247,7 @@ class Agent:
         self.V_coeff = V_coeff
         self.E_coeff = E_coeff
         self.use_value_clipping = use_value_clipping
+        self.use_coma_advantage = use_coma_advantage
         self.device = device
 
         self.memory = RollOutMemory(device)
@@ -285,26 +288,51 @@ class Agent:
             self.ct_scheduler = StepLR(optimizer=self.ct_optimizer, step_size=lr_step, gamma=lr_decay)
 
             if self.global_state_encoding == "EP":
-                self.global_critic = GlobalCritic(global_meta_data=global_meta_data,
-                                                  global_state_size=global_state_size,
-                                                  global_num_nodes=global_num_nodes,
-                                                  embed_dim=embed_dim,
-                                                  num_heads=num_heads,
-                                                  num_HGT_layers=num_HGT_layers,
-                                                  num_MLP_layers=num_critic_layers,
-                                                  global_state_encoding=global_state_encoding).to(device)
+                if not use_coma_advantage:
+                    self.global_critic = GlobalCritic(global_meta_data=global_meta_data,
+                                                      global_state_size=global_state_size,
+                                                      global_num_nodes=global_num_nodes,
+                                                      embed_dim=embed_dim,
+                                                      num_heads=num_heads,
+                                                      num_HGT_layers=num_HGT_layers,
+                                                      num_MLP_layers=num_critic_layers,
+                                                      global_state_encoding=global_state_encoding).to(device)
+                else:
+                    self.global_critic = COMACritic(global_meta_data=global_meta_data,
+                                                    global_state_size=global_state_size,
+                                                    global_num_nodes=global_num_nodes,
+                                                    embed_dim=embed_dim,
+                                                    num_heads=num_heads,
+                                                    num_HGT_layers=num_HGT_layers,
+                                                    num_MLP_layers=num_critic_layers,
+                                                    output_dim=critic_output_dim,
+                                                    global_state_encoding=global_state_encoding).to(device)
             else:
-                self.global_critic = GlobalCritic(fjsp_meta_data=fjsp_meta_data,
-                                                  fjsp_state_size=fjsp_state_size,
-                                                  fjsp_num_nodes=fjsp_num_nodes,
-                                                  ct_meta_data=ct_meta_data,
-                                                  ct_state_size=ct_state_size,
-                                                  ct_num_nodes=ct_num_nodes,
-                                                  embed_dim=embed_dim,
-                                                  num_heads=num_heads,
-                                                  num_HGT_layers=num_HGT_layers,
-                                                  num_MLP_layers=num_critic_layers,
-                                                  global_state_encoding=global_state_encoding).to(device)
+                if not use_coma_advantage:
+                    self.global_critic = GlobalCritic(fjsp_meta_data=fjsp_meta_data,
+                                                      fjsp_state_size=fjsp_state_size,
+                                                      fjsp_num_nodes=fjsp_num_nodes,
+                                                      ct_meta_data=ct_meta_data,
+                                                      ct_state_size=ct_state_size,
+                                                      ct_num_nodes=ct_num_nodes,
+                                                      embed_dim=embed_dim,
+                                                      num_heads=num_heads,
+                                                      num_HGT_layers=num_HGT_layers,
+                                                      num_MLP_layers=num_critic_layers,
+                                                      global_state_encoding=global_state_encoding).to(device)
+                else:
+                    self.global_critic = COMACritic(fjsp_meta_data=fjsp_meta_data,
+                                                    fjsp_state_size=fjsp_state_size,
+                                                    fjsp_num_nodes=fjsp_num_nodes,
+                                                    ct_meta_data=ct_meta_data,
+                                                    ct_state_size=ct_state_size,
+                                                    ct_num_nodes=ct_num_nodes,
+                                                    embed_dim=embed_dim,
+                                                    num_heads=num_heads,
+                                                    num_HGT_layers=num_HGT_layers,
+                                                    num_MLP_layers=num_critic_layers,
+                                                    output_dim=critic_output_dim,
+                                                    global_state_encoding=global_state_encoding).to(device)
             self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr)
             self.critic_scheduler = StepLR(optimizer=self.critic_optimizer, step_size=lr_step, gamma=lr_decay)
         elif learning_approach == "IL":
@@ -374,14 +402,20 @@ class Agent:
                             global_graph_feature = Batch.from_data_list([global_state.graph_feature]).to(self.device)
                             value = self.global_critic.evaluate(
                                 batch_global_graph_feature=global_graph_feature
-                            ).squeeze().item()
+                            ).squeeze()
                         else:
                             fjsp_graph_feature = Batch.from_data_list([global_state[0]]).to(self.device)
                             ct_graph_feature = Batch.from_data_list([global_state[1]]).to(self.device)
                             value = self.global_critic.evaluate(
                                 batch_fjsp_graph_feature=fjsp_graph_feature,
                                 batch_ct_graph_feature=ct_graph_feature,
-                            ).squeeze().item()
+                            ).squeeze()
+
+                        if self.use_coma_advantage:
+                            value = value.numpy()
+                        else:
+                            value = value.item()
+
                 else:
                     value = None
 
@@ -424,19 +458,20 @@ class Agent:
          current_operations,
          reorder_idxs) = self.memory.get(last_value)
 
-        td_target = rewards + self.gamma * values[1:] * dones
-        delta = td_target - values[:-1]
+        if not self.use_coma_advantage:
+            td_target = rewards + self.gamma * values[1:] * dones
+            delta = td_target - values[:-1]
 
-        advantage_lst = []
-        advantage = 0.0
-        for delta_t in delta.flip(dims=(0,)):
-            advantage = self.gamma * self.lmbda * advantage + delta_t
-            advantage_lst.append(advantage)
-        advantage_lst.reverse()
-        advantage = torch.concat(advantage_lst).unsqueeze(-1).to(self.device)
+            advantage_lst = []
+            advantage = 0.0
+            for delta_t in delta.flip(dims=(0,)):
+                advantage = self.gamma * self.lmbda * advantage + delta_t
+                advantage_lst.append(advantage)
+            advantage_lst.reverse()
+            advantage = torch.concat(advantage_lst).unsqueeze(-1).to(self.device)
 
-        # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
-        #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
+            # advantage = ((advantage - advantage.mean(dim=1, keepdim=True))
+            #               / (advantage.std(dim=1, correction=0, keepdim=True) + 1e-8))
 
         if self.learning_approach == "CTCE":
             self.global_network.train()
@@ -488,29 +523,78 @@ class Agent:
             avg_loss_critic = 0.0
 
             for i in range(self.K_epoch):
-                fjsp_new_log_probs, fjsp_dist_entropy \
-                    = self.fjsp_network.evaluate(batch_graph_feature=fjsp_graph_features,
-                                                 batch_pairwise_feature=fjsp_pairwise_features,
-                                                 batch_action=fjsp_actions,
-                                                 batch_mask=fjsp_masks,
-                                                 batch_current_operations=current_operations,
-                                                 batch_reorder_idxs=reorder_idxs)
+                if self.use_coma_advantage:
+                    fjsp_new_log_probs, fjsp_dist_entropy, fjsp_policy \
+                        = self.fjsp_network.evaluate(batch_graph_feature=fjsp_graph_features,
+                                                     batch_pairwise_feature=fjsp_pairwise_features,
+                                                     batch_action=fjsp_actions,
+                                                     batch_mask=fjsp_masks,
+                                                     batch_current_operations=current_operations,
+                                                     batch_reorder_idxs=reorder_idxs,
+                                                     return_policy=True)
 
-                ct_new_log_probs, ct_dist_entropy \
-                    = self.ct_network.evaluate(batch_graph_feature=ct_graph_features,
-                                               batch_pairwise_feature=ct_pairwise_features,
-                                               batch_action=ct_actions,
-                                               batch_mask=ct_masks)
+                    ct_new_log_probs, ct_dist_entropy, ct_policy \
+                        = self.ct_network.evaluate(batch_graph_feature=ct_graph_features,
+                                                   batch_pairwise_feature=ct_pairwise_features,
+                                                   batch_action=ct_actions,
+                                                   batch_mask=ct_masks,
+                                                   return_policy=True)
+
+                    ##COMA advantage##
+                    fjsp_policy = fjsp_policy.detach()
+                    ct_policy = ct_policy.detach()
+
+                    batch_size, num_fjsp_actions = fjsp_policy.shape
+                    _, num_ct_actions = ct_policy.shape
+
+                    values_reshaped = values.squeeze()[:-1].reshape(batch_size, num_fjsp_actions, -1)
+
+                    fjsp_index = ct_actions.unsqueeze(-1).expand(-1, num_fjsp_actions, 1)
+                    ct_index = fjsp_actions.unsqueeze(-1).expand(-1, 1, num_ct_actions)
+
+                    fjsp_values = values_reshaped.gather(dim=2, index=fjsp_index).squeeze()
+                    fjsp_baseline = (fjsp_values * fjsp_policy).sum().item()
+                    ct_values = values_reshaped.gather(dim=1, index=ct_index).squeeze()
+                    ct_baselines = (ct_values * ct_policy).sum().item()
+
+                    joint_value = fjsp_values.gather(dim=1, index=fjsp_actions)
+                    fjsp_advantage = joint_value - fjsp_baseline
+                    ct_advantage = joint_value - ct_baselines
+
+                else:
+                    fjsp_new_log_probs, fjsp_dist_entropy \
+                        = self.fjsp_network.evaluate(batch_graph_feature=fjsp_graph_features,
+                                                     batch_pairwise_feature=fjsp_pairwise_features,
+                                                     batch_action=fjsp_actions,
+                                                     batch_mask=fjsp_masks,
+                                                     batch_current_operations=current_operations,
+                                                     batch_reorder_idxs=reorder_idxs)
+
+                    ct_new_log_probs, ct_dist_entropy \
+                        = self.ct_network.evaluate(batch_graph_feature=ct_graph_features,
+                                                   batch_pairwise_feature=ct_pairwise_features,
+                                                   batch_action=ct_actions,
+                                                   batch_mask=ct_masks)
 
                 fjsp_ratio = torch.exp(fjsp_new_log_probs - fjsp_log_probs)
                 ct_ratio = torch.exp(ct_new_log_probs - ct_log_probs)
 
-                fjsp_surr1 = fjsp_ratio * advantage
-                fjsp_surr2 = torch.clamp(fjsp_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
+                if self.use_coma_advantage:
+                    fjsp_surr1 = fjsp_ratio * fjsp_advantage
+                    fjsp_surr2 = torch.clamp(fjsp_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * fjsp_advantage
+                else:
+                    fjsp_surr1 = fjsp_ratio * advantage
+                    fjsp_surr2 = torch.clamp(fjsp_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
+
                 fjsp_policy_loss = torch.min(fjsp_surr1, fjsp_surr2)
 
-                ct_surr1 = ct_ratio * advantage
-                ct_surr2 = torch.clamp(ct_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
+                if self.use_coma_advantage:
+                    ct_surr1 = ct_ratio * ct_advantage
+                    ct_surr2 = torch.clamp(ct_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * ct_advantage
+                else:
+                    ct_surr1 = ct_ratio * advantage
+                    ct_surr2 = torch.clamp(ct_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantage
+
                 ct_policy_loss = torch.min(ct_surr1, ct_surr2)
 
                 if self.global_state_encoding == "EP":
@@ -519,6 +603,15 @@ class Agent:
                     new_values = self.global_critic.evaluate(
                         batch_fjsp_graph_feature=global_fjsp_graph_features,
                         batch_ct_graph_feature=global_ct_graph_features)
+
+                if self.use_coma_advantage:
+                    expected_values = ((values_reshaped * fjsp_policy.unsqueeze(2) * ct_policy.unsqueeze(1))
+                                       .sum(dim=(1, 2), keepdim=True).squeeze(-1))
+                    td_target = rewards + self.gamma * expected_values
+
+                    new_values = new_values.reshape(batch_size, num_fjsp_actions, -1)
+                    new_values = new_values.gather(dim=2, index=fjsp_index).squeeze()
+                    new_values = new_values.gather(dim=1, index=fjsp_actions)
 
                 if self.use_value_clipping:
                     new_values_clipped = values[:-1] + torch.clamp(new_values - values[:-1], -self.eps_clip, self.eps_clip)

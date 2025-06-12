@@ -4,7 +4,6 @@ import torch.nn.functional as F
 
 from torch_geometric.nn import HGTConv
 from torch.distributions import Categorical
-from torch.nn import Parameter
 
 
 class FJSPScheduler(nn.Module):
@@ -53,7 +52,14 @@ class FJSPScheduler(nn.Module):
                 else:
                     self.critic.append(nn.Linear(embed_dim, 1))
 
-    def act(self, graph_feature, pairwise_feature, mask, current_operations, reorder_idx, greedy=False):
+    def act(self,
+            graph_feature=None,
+            pairwise_feature=None,
+            mask=None,
+            current_operations=None,
+            reorder_idx=None,
+            greedy=False):
+
         x_dict, edge_index_dict = graph_feature.x_dict, graph_feature.edge_index_dict
 
         for i in range(self.num_HGT_layers):
@@ -121,7 +127,15 @@ class FJSPScheduler(nn.Module):
         else:
             return action.item(), action_logprob.item()
 
-    def evaluate(self, batch_graph_feature, batch_pairwise_feature, batch_action, batch_mask, batch_current_operations, batch_reorder_idxs):
+    def evaluate(self,
+                 batch_graph_feature=None,
+                 batch_pairwise_feature=None,
+                 batch_action=None,
+                 batch_mask=None,
+                 batch_current_operations=None,
+                 batch_reorder_idxs=None,
+                 return_policy=False):
+
         batch_size = batch_graph_feature.num_graphs
         x_dict, edge_index_dict = batch_graph_feature.x_dict, batch_graph_feature.edge_index_dict
 
@@ -178,6 +192,12 @@ class FJSPScheduler(nn.Module):
         batch_dist_entropys = batch_dist.entropy().unsqueeze(-1)
 
         if self.use_local_critic:
-            return batch_action_logprobs, batch_state_values, batch_dist_entropys
+            if return_policy:
+                return batch_action_logprobs, batch_state_values, batch_dist_entropys, batch_probs
+            else:
+                return batch_action_logprobs, batch_state_values, batch_dist_entropys
         else:
-            return batch_action_logprobs, batch_dist_entropys
+            if return_policy:
+                return batch_action_logprobs, batch_dist_entropys, batch_probs
+            else:
+                return batch_action_logprobs, batch_dist_entropys

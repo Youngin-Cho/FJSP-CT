@@ -132,7 +132,8 @@ class CTScheduler(nn.Module):
                  batch_graph_feature=None,
                  batch_pairwise_feature=None,
                  batch_action=None,
-                 batch_mask=None):
+                 batch_mask=None,
+                 return_policy=False):
 
         batch_size = batch_graph_feature.num_graphs
         x_dict, edge_index_dict = batch_graph_feature.x_dict, batch_graph_feature.edge_index_dict
@@ -186,6 +187,12 @@ class CTScheduler(nn.Module):
         batch_dist_entropys = batch_dist.entropy().unsqueeze(-1)
 
         if self.use_local_critic:
-            return batch_action_logprobs, batch_state_values, batch_dist_entropys
+            if return_policy:
+                return batch_action_logprobs, batch_state_values, batch_dist_entropys, batch_probs
+            else:
+                return batch_action_logprobs, batch_state_values, batch_dist_entropys
         else:
-            return batch_action_logprobs, batch_dist_entropys
+            if return_policy:
+                return batch_action_logprobs, batch_dist_entropys, batch_probs
+            else:
+                return batch_action_logprobs, batch_dist_entropys

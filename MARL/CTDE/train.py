@@ -47,6 +47,7 @@ def get_config():
     parser.add_argument("--V_coeff", type=float, default=0.5, help="coefficient for value loss")
     parser.add_argument("--E_coeff", type=float, default=0.01, help="coefficient for entropy loss")
     parser.add_argument('--no_value_clipping', action='store_true', help="Disable value clipping")
+    parser.add_argument('--no_coma_advantage', action='store_true', help="Disable COMA advantage")
     parser.add_argument('--global_state_encoding', type=str, default="EP", help="global state encoding method")
 
     parser.add_argument("--eval_every", type=int, default=50, help="Evaluate every x episodes")
@@ -104,6 +105,7 @@ def train(config):
     V_coeff = config.V_coeff
     E_coeff = config.E_coeff
     use_value_clipping = False if config.no_value_clipping else True
+    use_coma_advantage = False if config.no_coma_advantage else True
     global_state_encoding = config.global_state_encoding
 
     eval_every = config.eval_every
@@ -158,6 +160,14 @@ def train(config):
                   return_global_state=True,
                   global_state_encoding=global_state_encoding)
 
+    if use_coma_advantage:
+        critic_output_dim = int(env.num_jobs
+                                * (env.num_machines + env.num_buffers +env.num_outputpoints)
+                                * (env.num_cranes + 1)
+                                * env.num_operations)
+    else:
+        critic_output_dim = 1
+
     agent = Agent(fjsp_meta_data=env.fjsp_meta_data,
                   fjsp_state_size=env.fjsp_state_size,
                   fjsp_num_nodes=env.fjsp_num_nodes,
@@ -168,6 +178,7 @@ def train(config):
                   global_state_size=env.global_state_size,
                   global_num_nodes=env.global_num_nodes,
                   embed_dim=embed_dim,
+                  critic_output_dim=critic_output_dim,
                   num_heads=num_heads,
                   num_HGT_layers=num_HGT_layers,
                   num_actor_layers=num_actor_layers,
@@ -183,6 +194,7 @@ def train(config):
                   V_coeff=V_coeff,
                   E_coeff=E_coeff,
                   use_value_clipping=use_value_clipping,
+                  use_coma_advantage=use_coma_advantage,
                   global_state_encoding=global_state_encoding,
                   device=device)
 
@@ -267,7 +279,10 @@ def train(config):
 
             if done or len(agent.memory.fjsp_actions) == T_horizon:
                 if done:
-                    last_value = 0.0
+                    if use_coma_advantage:
+                        last_value = np.zeros(critic_output_dim)
+                    else:
+                        last_value = 0.0
                 else:
                     _, _, last_value = agent.get_action(local_state=fjsp_state,
                                                         global_state=global_state,
