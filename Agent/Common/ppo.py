@@ -610,7 +610,7 @@ class Agent:
                 if self.use_coma_advantage:
                     expected_values = ((values_reshaped * fjsp_policy.unsqueeze(2) * ct_policy.unsqueeze(1))
                                        .sum(dim=(1, 2), keepdim=True).squeeze(-1))
-                    td_target = rewards + self.gamma * expected_values
+                    td_target = rewards + self.gamma * expected_values * dones
 
                     new_values = new_values.reshape(batch_size, num_fjsp_actions, -1)
                     new_values = new_values.gather(dim=2, index=fjsp_index).squeeze(-1)
