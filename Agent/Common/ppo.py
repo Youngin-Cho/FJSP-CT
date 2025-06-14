@@ -560,9 +560,9 @@ class Agent:
                     ct_values = values_reshaped.gather(dim=1, index=ct_index).squeeze(-2)
                     ct_baselines = (ct_values * ct_policy).sum(dim=1, keepdim=True)
 
-                    joint_value = fjsp_values.gather(dim=1, index=fjsp_actions)
-                    fjsp_advantage = joint_value - fjsp_baseline
-                    ct_advantage = joint_value - ct_baselines
+                    joint_values = fjsp_values.gather(dim=1, index=fjsp_actions)
+                    fjsp_advantage = joint_values - fjsp_baseline
+                    ct_advantage = joint_values - ct_baselines
 
                 else:
                     fjsp_new_log_probs, fjsp_dist_entropy \
@@ -608,9 +608,13 @@ class Agent:
                         batch_ct_graph_feature=global_ct_graph_features)
 
                 if self.use_coma_advantage:
-                    expected_values = ((values_reshaped * fjsp_policy.unsqueeze(2) * ct_policy.unsqueeze(1))
-                                       .sum(dim=(1, 2), keepdim=True).squeeze(-1))
-                    td_target = rewards + self.gamma * expected_values * dones
+                    G_lst = []
+                    temp = 0.0
+                    for reward_t in rewards.flip(dims=(0,)):
+                        temp = self.gamma * temp + reward_t
+                        G_lst.append(temp)
+                    G_lst.reverse()
+                    G = torch.concat(G_lst).unsqueeze(-1).to(self.device)
 
                     new_values = new_values.reshape(batch_size, num_fjsp_actions, -1)
                     new_values = new_values.gather(dim=2, index=fjsp_index).squeeze(-1)
@@ -622,7 +626,10 @@ class Agent:
                     value_loss_original = F.smooth_l1_loss(new_values, td_target)
                     value_loss = torch.max(value_loss_original, value_loss_clipped)
                 else:
-                    value_loss = F.smooth_l1_loss(new_values, td_target)
+                    if self.use_coma_advantage:
+                        value_loss = F.smooth_l1_loss(new_values, G)
+                    else:
+                        value_loss = F.smooth_l1_loss(new_values, td_target)
 
                 fjsp_loss = - self.P_coeff * fjsp_policy_loss - self.E_coeff * fjsp_dist_entropy
                 ct_loss = - self.P_coeff * ct_policy_loss - self.E_coeff * ct_dist_entropy
