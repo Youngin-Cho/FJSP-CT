@@ -333,7 +333,7 @@ class Agent:
                                                     num_MLP_layers=num_critic_layers,
                                                     output_dim=critic_output_dim,
                                                     global_state_encoding=global_state_encoding).to(device)
-            self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr)
+            self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr * 2)
             self.critic_scheduler = StepLR(optimizer=self.critic_optimizer, step_size=lr_step, gamma=lr_decay)
         elif learning_approach == "IL":
             pass
