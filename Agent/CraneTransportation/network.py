@@ -23,7 +23,6 @@ class CTScheduler(nn.Module):
         self.use_local_critic = use_local_critic
         self.use_communication = use_communication
 
-        self.num_operations = self.num_nodes["operation"]
         self.num_cranes = self.num_nodes["crane"]
 
         self.conv = nn.ModuleList()
@@ -88,7 +87,7 @@ class CTScheduler(nn.Module):
         else:
             h_operations_pooled = h_operations.mean(dim=-2)
             h_operations_pooled_padding = (h_operations_pooled.unsqueeze(-2).unsqueeze(-3)
-                                           .expand(self.num_operations, self.num_cranes, -1))
+                                           .expand(h_operations.shape[0], self.num_cranes, -1))
             h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_pooled_padding)
 
             h_actions = torch.cat((h_cranes_padding, h_operations_pooled_padding), dim=-1)
@@ -164,7 +163,7 @@ class CTScheduler(nn.Module):
         else:
             h_operations_pooled = h_operations.mean(dim=-2)
             h_operations_pooled_padding = (h_operations_pooled.unsqueeze(-2).unsqueeze(-3)
-                                           .expand(-1, self.num_operations, self.num_cranes, -1))
+                                           .expand(-1, h_operations.shape[1], self.num_cranes, -1))
             h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_pooled_padding)
 
             h_actions = torch.cat((h_cranes_padding, h_operations_pooled_padding), dim=-1)
