@@ -232,6 +232,7 @@ class Agent:
                  V_coeff=0.5,  # 가치함수 학습에 대한 가중치
                  E_coeff=0.1,  # 엔트로피에 대한 가중치
                  use_value_clipping=True,
+                 use_communication=True,
                  use_coma_advantage=False,
                  device="cpu"):
 
@@ -283,7 +284,8 @@ class Agent:
                                           num_HGT_layers=num_HGT_layers,
                                           num_actor_layers=num_actor_layers,
                                           num_critic_layers=num_critic_layers,
-                                          use_local_critic=False).to(device)
+                                          use_local_critic=False,
+                                          use_communication=use_communication).to(device)
             self.ct_optimizer = optim.Adam(self.ct_network.parameters(), lr=lr)
             self.ct_scheduler = StepLR(optimizer=self.ct_optimizer, step_size=lr_step, gamma=lr_decay)
 
@@ -333,7 +335,7 @@ class Agent:
                                                     num_MLP_layers=num_critic_layers,
                                                     output_dim=critic_output_dim,
                                                     global_state_encoding=global_state_encoding).to(device)
-            self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr * 2)
+            self.critic_optimizer = optim.Adam(self.global_critic.parameters(), lr=lr)
             self.critic_scheduler = StepLR(optimizer=self.critic_optimizer, step_size=lr_step, gamma=lr_decay)
         elif learning_approach == "IL":
             pass

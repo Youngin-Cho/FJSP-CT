@@ -23,6 +23,7 @@ class CTScheduler(nn.Module):
         self.use_local_critic = use_local_critic
         self.use_communication = use_communication
 
+        self.num_operations = self.num_nodes["operation"]
         self.num_cranes = self.num_nodes["crane"]
 
         self.conv = nn.ModuleList()
@@ -74,18 +75,23 @@ class CTScheduler(nn.Module):
         h_cranes = x_dict["crane"]
         h_operations = x_dict["operation"]
 
-        h_operations_padding = h_operations.unsqueeze(-2).expand(-1, self.num_cranes, -1)
-        h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_padding)
-
         if self.use_communication:
             h_added = pairwise_feature
             for i in range(self.num_HGT_layers):
                 h_added = self.fc[i](h_added)
                 h_added = F.elu(h_added)
 
+            h_operations_padding = h_operations.unsqueeze(-2).expand(-1, self.num_cranes, -1)
+            h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_padding)
+
             h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
         else:
-            h_actions = torch.cat((h_cranes_padding, h_operations_padding), dim=-1)
+            h_operations_pooled = h_operations.mean(dim=-2)
+            h_operations_pooled_padding = (h_operations_pooled.unsqueeze(-2).unsqueeze(-3)
+                                           .expand(self.num_operations, self.num_cranes, -1))
+            h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_pooled_padding)
+
+            h_actions = torch.cat((h_cranes_padding, h_operations_pooled_padding), dim=-1)
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:
@@ -145,18 +151,23 @@ class CTScheduler(nn.Module):
         h_cranes = x_dict["crane"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
         h_operations = x_dict["operation"].unsqueeze(0).reshape(batch_size, -1, self.embed_dim)
 
-        h_operations_padding = h_operations.unsqueeze(-2).expand(-1, -1, self.num_cranes, -1)
-        h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_padding)
-
         if self.use_communication:
             h_added = batch_pairwise_feature
             for i in range(self.num_HGT_layers):
                 h_added = self.fc[i](h_added)
                 h_added = F.elu(h_added)
 
+            h_operations_padding = h_operations.unsqueeze(-2).expand(-1, -1, self.num_cranes, -1)
+            h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_padding)
+
             h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
         else:
-            h_actions = torch.cat((h_cranes_padding, h_operations_padding), dim=-1)
+            h_operations_pooled = h_operations.mean(dim=-2)
+            h_operations_pooled_padding = (h_operations_pooled.unsqueeze(-2).unsqueeze(-3)
+                                           .expand(-1, self.num_operations, self.num_cranes, -1))
+            h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_pooled_padding)
+
+            h_actions = torch.cat((h_cranes_padding, h_operations_pooled_padding), dim=-1)
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:

@@ -202,6 +202,7 @@ def train(config):
                        E_coeff=E_coeff,
                        use_value_clipping=use_value_clipping,
                        use_local_critic=True,
+                       use_communication=use_communication,
                        device=device)
 
     if not use_vessl:

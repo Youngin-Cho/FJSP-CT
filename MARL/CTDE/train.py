@@ -193,6 +193,7 @@ def train(config):
                   V_coeff=V_coeff,
                   E_coeff=E_coeff,
                   use_value_clipping=use_value_clipping,
+                  use_communication=use_communication,
                   use_coma_advantage=use_coma_advantage,
                   global_state_encoding=global_state_encoding,
                   device=device)
