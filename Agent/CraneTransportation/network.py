@@ -41,9 +41,11 @@ class CTScheduler(nn.Module):
         for i in range(num_actor_layers):
             if i == 0:
                 if self.use_communication:
-                    self.actor.append(nn.Linear(embed_dim * 3, embed_dim))
-                else:
+                    # self.actor.append(nn.Linear(embed_dim * 3, embed_dim))
                     self.actor.append(nn.Linear(embed_dim * 2, embed_dim))
+                else:
+                    # self.actor.append(nn.Linear(embed_dim * 2, embed_dim))
+                    self.actor.append(nn.Linear(embed_dim * 1, embed_dim))
             elif 0 < i < num_actor_layers - 1:
                 self.actor.append(nn.Linear(embed_dim, embed_dim))
             else:
@@ -85,12 +87,14 @@ class CTScheduler(nn.Module):
 
             h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
         else:
-            h_operations_pooled = h_operations.mean(dim=-2)
-            h_operations_pooled_padding = (h_operations_pooled.unsqueeze(-2).unsqueeze(-3)
-                                           .expand(h_operations.shape[0], self.num_cranes, -1))
-            h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_pooled_padding)
+            # h_operations_pooled = h_operations.mean(dim=-2)
+            # h_operations_pooled_padding = (h_operations_pooled.unsqueeze(-2).unsqueeze(-3)
+            #                                .expand(h_operations.shape[0], self.num_cranes, -1))
+            # h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_pooled_padding)
+            #
+            # h_actions = torch.cat((h_cranes_padding, h_operations_pooled_padding), dim=-1)
 
-            h_actions = torch.cat((h_cranes_padding, h_operations_pooled_padding), dim=-1)
+            h_actions = h_cranes
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:
@@ -99,7 +103,11 @@ class CTScheduler(nn.Module):
             else:
                 logits = self.actor[i](h_actions).flatten()
 
-        mask = mask.transpose(0, 1).flatten()
+        if self.use_communication:
+            mask = mask.transpose(0, 1).flatten()
+        else:
+            mask = mask.transpose(0, 1).any(axis=0)
+
         logits[~mask] = float('-inf')
         probs = F.softmax(logits, dim=-1)
 
@@ -161,12 +169,14 @@ class CTScheduler(nn.Module):
 
             h_actions = torch.cat((h_cranes_padding, h_operations_padding, h_added), dim=-1)
         else:
-            h_operations_pooled = h_operations.mean(dim=-2)
-            h_operations_pooled_padding = (h_operations_pooled.unsqueeze(-2).unsqueeze(-3)
-                                           .expand(-1, h_operations.shape[1], self.num_cranes, -1))
-            h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_pooled_padding)
+            # h_operations_pooled = h_operations.mean(dim=-2)
+            # h_operations_pooled_padding = (h_operations_pooled.unsqueeze(-2).unsqueeze(-3)
+            #                                .expand(-1, h_operations.shape[1], self.num_cranes, -1))
+            # h_cranes_padding = h_cranes.unsqueeze(-3).expand_as(h_operations_pooled_padding)
+            #
+            # h_actions = torch.cat((h_cranes_padding, h_operations_pooled_padding), dim=-1)
 
-            h_actions = torch.cat((h_cranes_padding, h_operations_pooled_padding), dim=-1)
+            h_actions = h_cranes
 
         for i in range(self.num_actor_layers):
             if i < len(self.actor) - 1:
@@ -175,7 +185,11 @@ class CTScheduler(nn.Module):
             else:
                 batch_logits = self.actor[i](h_actions).flatten(1)
 
-        batch_mask = batch_mask.transpose(1, 2).flatten(1)
+        if self.use_communication:
+            batch_mask = batch_mask.transpose(1, 2).flatten(1)
+        else:
+            batch_mask = batch_mask.transpose(1, 2).any(axis=1)
+
         batch_logits[~batch_mask] = float('-inf')
         batch_probs = F.softmax(batch_logits, dim=1)
         batch_dist = Categorical(batch_probs)
