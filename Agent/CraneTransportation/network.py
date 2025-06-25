@@ -42,7 +42,7 @@ class CTScheduler(nn.Module):
             if i == 0:
                 if self.use_communication:
                     # self.actor.append(nn.Linear(embed_dim * 3, embed_dim))
-                    self.actor.append(nn.Linear(embed_dim * 2, embed_dim))
+                    self.actor.append(nn.Linear(embed_dim * 3, embed_dim))
                 else:
                     # self.actor.append(nn.Linear(embed_dim * 2, embed_dim))
                     self.actor.append(nn.Linear(embed_dim * 1, embed_dim))
