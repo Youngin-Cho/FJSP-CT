@@ -100,7 +100,8 @@ def test(config):
                                num_HGT_layers=parameters["num_HGT_layers"],
                                num_actor_layers=parameters["num_actor_layers"],
                                num_critic_layers=parameters["num_critic_layers"],
-                               use_local_critic=False).to(device)
+                               use_local_critic=False,
+                               use_communication=use_communication).to(device)
 
         checkpoint = torch.load(ct_model_path, map_location=torch.device(device), weights_only=True)
         ct_agent.load_state_dict(checkpoint['model_state_dict'])
@@ -163,7 +164,7 @@ if __name__ == "__main__":
 
     for num_jobs, num_machines in test_case:
         config.data_dir = "./input/case1/test/%d-%d/" % (num_jobs, num_machines)
-        config.res_dir = "./output/version3/test/%d-%d/MARL/CTDE/RL-RL with EP (+comm)/" % (num_jobs, num_machines)
+        config.res_dir = "./output/version3/test/%d-%d/MARL/CTDE/RL-RL with EP/" % (num_jobs, num_machines)
 
         if not os.path.exists(config.res_dir):
             os.makedirs(config.res_dir)

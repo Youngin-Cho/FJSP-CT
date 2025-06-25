@@ -117,7 +117,8 @@ def test(config):
                                    num_HGT_layers=parameters["num_HGT_layers"],
                                    num_actor_layers=parameters["num_actor_layers"],
                                    num_critic_layers=parameters["num_critic_layers"],
-                                   use_local_critic=True).to(device)
+                                   use_local_critic=True,
+                                   use_communication=use_communication).to(device)
 
             checkpoint = torch.load(model_path, map_location=torch.device(device), weights_only=True)
             ct_agent.load_state_dict(checkpoint['model_state_dict'])
@@ -231,10 +232,10 @@ if __name__ == "__main__":
                     param_dir = config.fjsp_param_dir
                     model_dir = config.fjsp_model_dir
                 else:
-                    param_dir = ("./output/version3/train/SARL/20-10/%s-%s/log/" % (fjsp_algorithm, ct_algorithm))
-                    model_dir = ("./output/version3/train/SARL/20-10/%s-%s/model/" % (fjsp_algorithm, ct_algorithm))
-                    # param_dir = "./output/version3/train/SARL/20-10/RL-SETT/log/"
-                    # model_dir = "./output/version3/train/SARL/20-10/RL-SETT/model/"
+                    param_dir = "./output/version3/train/SARL/20-10/%s-%s/log/" % (fjsp_algorithm, ct_algorithm)
+                    model_dir = "./output/version3/train/SARL/20-10/%s-%s/model/" % (fjsp_algorithm, ct_algorithm)
+                    # param_dir = "./output/version3/train/SARL/20-10/RL-TDT/log/"
+                    # model_dir = "./output/version3/train/SARL/20-10/RL-TDT/model/"
 
                 episode = max(
                     int(os.path.splitext(filename)[0].split("-")[1])
@@ -250,8 +251,8 @@ if __name__ == "__main__":
                     param_dir = config.ct_param_dir
                     model_dir = config.ct_model_dir
                 else:
-                    param_dir = ("./output/version3/train/SARL/20-10/%s-%s/log/" % (fjsp_algorithm, ct_algorithm))
-                    model_dir = ("./output/version3/train/SARL/20-10/%s-%s/model/" % (fjsp_algorithm, ct_algorithm))
+                    param_dir = "./output/version3/train/SARL/20-10/%s-%s/log/" % (fjsp_algorithm, ct_algorithm)
+                    model_dir = "./output/version3/train/SARL/20-10/%s-%s/model/" % (fjsp_algorithm, ct_algorithm)
                     # param_dir = "./output/version3/train/SARL/20-10/MWKR-RL/log/"
                     # model_dir = "./output/version3/train/SARL/20-10/MWKR-RL/model/"
 
