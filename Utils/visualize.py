@@ -61,7 +61,6 @@ def draw_scatter_plot(save=False):
     }
 
     positions = range(len(problem_sizes))
-    # positions = np.linspace(0, len(problem_sizes) - 0, len(problem_sizes))
 
     # 그래프 생성
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -209,14 +208,19 @@ def draw_boxplot_SARL(problem_size="10-5", tag="FJSP", save=False):
     # 9. x축 설정
     ax.set_xlabel("Algorithms", fontsize=20)
     ax.set_ylabel("Performance Measure ($\sigma$)", fontsize=20)
-    ax.set_title(problem_size, fontsize=25)
+    # ax.set_title(problem_size, fontsize=25)
 
     ax.set_xticks(positions)
     ax.set_xticklabels(labels, rotation=45, ha='center', fontsize=15)
 
-    ax.set_ylim(-10, 40)
-    yticklabels = ax.get_yticklabels()
-    ax.set_yticklabels(yticklabels, fontsize=15)
+    if tag == "FJSP":
+        ax.set_ylim(-10, 40)
+        yticklabels = ax.get_yticklabels()
+        ax.set_yticklabels(yticklabels, fontsize=15)
+    else:
+        ax.set_ylim(-10, 40)
+        yticklabels = ax.get_yticklabels()
+        ax.set_yticklabels(yticklabels, fontsize=15)
 
     # 10. 범례 수동 생성
     # from matplotlib.patches import Patch
@@ -342,7 +346,7 @@ def draw_boxplot_MARL(problem_size="10-5", save=False):
 
     ax.set_xlabel("Algorithms", fontsize=20)
     ax.set_ylabel("Performance Measure ($\sigma$)", fontsize=20)
-    ax.set_title(problem_size, fontsize=25)
+    # ax.set_title(problem_size, fontsize=25)
 
     ax.set_xticks(positions)
     ax.set_xticklabels(labels, rotation=45, ha='center', fontsize=15)
@@ -364,6 +368,15 @@ def draw_boxplot_MARL(problem_size="10-5", save=False):
 
 
 def draw_bar_plot(problem_size="10-5", tag="FJSP", save=False):
+    title = {
+        "10-5": "(a) 10-5",
+        "15-5": "(b) 15-5",
+        "15-10": "(c) 15-10",
+        "20-10": "(d) 20-10",
+        "20-15": "(e) 20-15",
+        "25-15": "(f) 25-15"
+    }
+
     df = pd.read_excel('../output/test/results_scaled_by_rand+rand.xlsx',
                        sheet_name=problem_size, engine="openpyxl", index_col=0).iloc[:-1]
 
@@ -419,12 +432,21 @@ def draw_bar_plot(problem_size="10-5", tag="FJSP", save=False):
         )
 
     # 축 설정
-    ax.set_title(problem_size, fontsize=25)
+    ax.set_title(title[problem_size], fontsize=25)
     ax.set_xlabel("Algorithms", fontsize=20)
     ax.set_ylabel("Performance Measure ($\sigma$)", fontsize=20)
 
     ax.set_xticks(x)
     ax.set_xticklabels(columns, fontsize=15)
+
+    if tag == "FJSP":
+        ax.set_ylim(0, 25)
+        yticklabels = ax.get_yticklabels()
+        ax.set_yticklabels(yticklabels, fontsize=15)
+    else:
+        ax.set_ylim(0, 25)
+        yticklabels = ax.get_yticklabels()
+        ax.set_yticklabels(yticklabels, fontsize=15)
 
     ax.tick_params(axis='y', labelsize=15)
     ax.grid(True, linestyle='--', axis='y', alpha=0.5)
@@ -442,6 +464,15 @@ def draw_bar_plot(problem_size="10-5", tag="FJSP", save=False):
 
 
 def draw_pie_chart(problem_size="10-5", save=False):
+    title = {
+        "10-5": "(a) 10-5",
+        "15-5": "(b) 15-5",
+        "15-10": "(c) 15-10",
+        "20-10": "(d) 20-10",
+        "20-15": "(e) 20-15",
+        "25-15": "(f) 25-15"
+    }
+
     # 1. 데이터 불러오기
     df = pd.read_excel('../output/test/results_scaled_by_rand+rand.xlsx',
                        sheet_name=problem_size, engine="openpyxl", index_col=0).iloc[:-1]
@@ -487,7 +518,7 @@ def draw_pie_chart(problem_size="10-5", save=False):
         chart_colors.append(colors[mapped_name])
 
     # 3. Pie chart 그리기
-    fig_width = 8
+    fig_width = 12
     fig_height = 8
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
@@ -518,14 +549,14 @@ def draw_pie_chart(problem_size="10-5", save=False):
 
     # 텍스트 테두리 효과 추가
     for autotext in autotexts:
-        autotext.set_fontsize(13)
+        autotext.set_fontsize(20)
         autotext.set_color('white')
         autotext.set_path_effects([
             patheffects.withStroke(linewidth=2, foreground='black')
         ])
 
     # 제목 스타일
-    ax.set_title(problem_size, fontsize=25)
+    ax.set_title(title[problem_size], fontsize=35)
 
     # 범례 위치 및 디자인
     used_algorithms = set(mapped_counts.keys())
@@ -548,11 +579,10 @@ def draw_pie_chart(problem_size="10-5", save=False):
     # 범례 설정
     ax.legend(
         handles=legend_handles,
-        loc='lower center',
-        bbox_to_anchor=(0.5, -0.1),
-        ncol=3,
+        loc='center left',
+        bbox_to_anchor=(0.9, 0.5),
         frameon=False,
-        fontsize=12
+        fontsize=20
     )
 
     # 원형 유지 및 여백 조정
@@ -630,7 +660,7 @@ def draw_paired_bar_plot(save=False):
     ax.set_xticks(x)
     ax.set_xticklabels(clean_algorithm_names, ha='center', fontsize=15)
 
-    ax.set_ylim(0, 40)
+    ax.set_ylim(0, 35)
     yticklabels = ax.get_yticklabels()
     ax.set_yticklabels(yticklabels, fontsize=15)
 
@@ -656,13 +686,109 @@ def draw_paired_bar_plot(save=False):
         fig.savefig(file_dir + 'paired bar chart.png', dpi=300, bbox_inches='tight')
 
 
-if __name__ == "__main__":
-    # problem_sizes = ["10-5", "15-5", "15-10", "20-10", "20-15", "25-15"]
-    # for size in problem_sizes:
-    #     draw_pie_chart(problem_size=size, save=True)
-    #     draw_bar_plot(problem_size=size, tag="CT", save=True)
+def draw_line_graph(save=False):
+    problem_sizes = ["10-5", "15-5", "15-10", "20-10", "20-15", "25-15"]
+    algorithms = ["SPT+SETT", "RL+SETT", "MWKR+RL (comm.)", "RL+RL (comm.)", "CTCE",
+                  "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
 
-    # draw_boxplot_SARL(problem_size="20-10", tag="CT", save=True)
-    # draw_boxplot_MARL(problem_size="20-10", save=True)
-    # draw_scatter_plot(save=True)
+    df_list = []
+    for i, size in enumerate(problem_sizes):
+        df = pd.read_excel('../output/test/results_computing_time.xlsx',
+                           sheet_name=size, engine="openpyxl", index_col=0)
+        df_selected = df[["num_operations"] + algorithms].reset_index(drop=True)
+        df_list.append(df_selected)
+    df_total = pd.concat(df_list, axis=0)
+
+    df_group = df_total.groupby(by="num_operations").mean()
+
+    mapping = {
+        "SPT+SETT": "SPT+SETT",
+        "RL+SETT": "RL+SETT",
+        "MWKR+RL (comm.)": "MWKR+RL",
+        "RL+RL (comm.)": "RL+RL",
+        "CTCE": "CTCE",
+        "DTDE (comm.)": "DTDE",
+        "DTDE with pt (comm.)": "DTDE with pt",
+        "CTDE with CL (comm.)": "CTDE with CL",
+        "CTDE with EP (comm.)": "CTDE with EP"
+    }
+
+    colors = {
+        "SPT+SETT": "#440154",  # Deep Purple
+        "RL+SETT": "#3B528B",  # Indigo Blue
+        "MWKR+RL": "#21908C",  # Teal Green
+        "RL+RL": "#5DC863",  # Soft Green
+        "CTCE": "#FDE725",  # Golden Yellow
+        "DTDE": "#F9844A",  # Warm Orange
+        "DTDE with pt": "#D43E4F",  # Coral Red
+        "CTDE with CL": "#728EA3",  # Slate Blue
+        "CTDE with EP": "#A6AD00",  # Olive Green
+    }
+
+    # 그래프 생성
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    # 실제 num_operations 값을 x축으로 사용
+    x_values = df_group.index.values
+
+    # 각 알고리즘별로 선 그래프 그리기
+    for algorithm in algorithms:
+        mapped_name = mapping[algorithm]
+        y_values = df_group[algorithm].values
+
+        ax.plot(x_values, y_values,
+                label=mapped_name,
+                color=colors[mapped_name],
+                linewidth=2,
+                markersize=6)
+
+    # x축 라벨 설정 (45부터 130까지 5단위로 동일 간격 표시)
+    desired_ticks = list(range(40, 136, 5))  # 45, 50, 55, ..., 130
+    ax.set_xticks(desired_ticks)
+    ax.set_xticklabels(desired_ticks, fontsize=15)
+    ax.set_xlim(40, 135)
+
+    # y축
+    ax.set_ylim(0, 25)
+    yticklabels = ax.get_yticklabels()
+    ax.set_yticklabels(yticklabels, fontsize=15)
+
+    # 축 라벨 및 제목 설정
+    ax.set_xlabel('Number of Operations', fontsize=20)
+    ax.set_ylabel('Computing Time (s)', fontsize=20)
+
+    # 범례 설정
+    ax.legend(loc='upper center',  # 기준 위치 (anchor 기준에서 위쪽 가운데)
+              bbox_to_anchor=(0.5, -0.15),  # (x, y) → x는 가운데(0.5), y는 아래쪽 바깥 (-0.15)
+              ncol=5,  # 범례 항목을 가로로 배열할 때 열 수 지정 (선택)
+              frameon=False,
+              fontsize=15)
+
+    # 격자 추가
+    ax.grid(True, linestyle='--', alpha=0.7)
+
+    # 레이아웃 조정
+    plt.tight_layout()
+    plt.show()
+
+    if save:
+        file_dir = '../output/test/figures/MARL/'
+        if not os.path.exists(file_dir):
+            os.makedirs(file_dir)
+
+        fig.savefig(file_dir + 'line plot.png', dpi=300, bbox_inches='tight')
+
+
+if __name__ == "__main__":
+    problem_sizes = ["10-5", "15-5", "15-10", "20-10", "20-15", "25-15"]
+    for size in problem_sizes:
+        draw_pie_chart(problem_size=size, save=True)
+        draw_bar_plot(problem_size=size, tag="CT", save=True)
+        draw_bar_plot(problem_size=size, tag="FJSP", save=True)
+
+    draw_boxplot_SARL(problem_size="20-10", tag="CT", save=True)
+    draw_boxplot_SARL(problem_size="20-10", tag="FJSP", save=True)
+    draw_boxplot_MARL(problem_size="20-10", save=True)
+    draw_scatter_plot(save=True)
     draw_paired_bar_plot(save=True)
+    draw_line_graph(save=True)
