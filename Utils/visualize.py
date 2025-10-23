@@ -31,7 +31,7 @@ def draw_scatter_plot(save=False):
         "RL+RL (comm.)": "RL+RL",
         "CTCE": "CTCE",
         "DTDE (comm.)": "DTDE",
-        "DTDE with pt (comm.)": "DTDE with pt",
+        "DTDE with pt (comm.)": "Pre-trained DTDE",
         "CTDE with CL (comm.)": "CTDE with CL",
         "CTDE with EP (comm.)": "CTDE with EP"
     }
@@ -43,7 +43,7 @@ def draw_scatter_plot(save=False):
         "RL+RL": "#5DC863",  # Soft Green
         "CTCE": "#FDE725",  # Golden Yellow
         "DTDE": "#F9844A",  # Warm Orange
-        "DTDE with pt": "#D43E4F",  # Coral Red
+        "Pre-trained DTDE": "#D43E4F",  # Coral Red
         "CTDE with CL": "#728EA3",  # Slate Blue
         "CTDE with EP": "#A6AD00",  # Olive Green
     }
@@ -55,7 +55,7 @@ def draw_scatter_plot(save=False):
         "RL+RL": 's',
         'CTCE': 'd',
         'DTDE': 'o',
-        'DTDE with pt': '*',
+        'Pre-trained DTDE': '*',
         "CTDE with CL": 'p',
         "CTDE with EP": 'h'
     }
@@ -63,7 +63,7 @@ def draw_scatter_plot(save=False):
     positions = range(len(problem_sizes))
 
     # 그래프 생성
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(12, 10))
 
     for algorithm in algorithms:
         # 색상과 마커 설정
@@ -82,21 +82,22 @@ def draw_scatter_plot(save=False):
                 marker=marker,
                 label=mapping[algorithm],
                 linestyle="None",
-                markersize=10)
+                markersize=15)
 
     # 그래프 설정
-    ax.set_xlabel('Size of Problems', fontsize=20)
+    ax.set_xlabel('No. of Machines X No. of Jobs', fontsize=20, labelpad=10)
     ax.set_ylabel('Performance Measure ($\sigma$)', fontsize=20)
 
     # x축 설정
     ax.set_xlim(-0.5, len(problem_sizes) - 0.5)
     ax.set_xticks(positions)
-    ax.set_xticklabels(problem_sizes, ha='center', fontsize=15)
+    xticklabels = ["5X10", "5X15", "10X15", "10X20", "15X20", "15X25"]
+    ax.set_xticklabels(xticklabels, ha='center', fontsize=20)
 
     # y축 범위 설정 (그림에 맞게)
     ax.set_ylim(0, 35)
     yticklabels = ax.get_yticklabels()
-    ax.set_yticklabels(yticklabels, fontsize=15)
+    ax.set_yticklabels(yticklabels, fontsize=20)
 
     # 격자 추가
     # ax.grid(True, alpha=0.3)
@@ -110,7 +111,7 @@ def draw_scatter_plot(save=False):
     # 범례 추가
     ax.legend(
         loc='upper center',  # 기준 위치 (anchor 기준에서 위쪽 가운데)
-        bbox_to_anchor=(0.5, -0.15),  # (x, y) → x는 가운데(0.5), y는 아래쪽 바깥 (-0.15)
+        bbox_to_anchor=(0.5, -0.1),  # (x, y) → x는 가운데(0.5), y는 아래쪽 바깥 (-0.15)
         ncol=5,  # 범례 항목을 가로로 배열할 때 열 수 지정 (선택)
         frameon=False,  # 범례 박스 테두리 없애기 (선택)
         fontsize=15
@@ -206,21 +207,21 @@ def draw_boxplot_SARL(problem_size="10-5", tag="FJSP", save=False):
     ax.axvline(x=boundary2, color='gray', linestyle='--', linewidth=1.5, alpha=0.7)
 
     # 9. x축 설정
-    ax.set_xlabel("Algorithms", fontsize=20)
+    # ax.set_xlabel("Algorithms", fontsize=20)
     ax.set_ylabel("Performance Measure ($\sigma$)", fontsize=20)
     # ax.set_title(problem_size, fontsize=25)
 
     ax.set_xticks(positions)
-    ax.set_xticklabels(labels, rotation=45, ha='center', fontsize=15)
+    ax.set_xticklabels(labels, rotation=45, ha='center', fontsize=20)
 
     if tag == "FJSP":
         ax.set_ylim(-10, 40)
         yticklabels = ax.get_yticklabels()
-        ax.set_yticklabels(yticklabels, fontsize=15)
+        ax.set_yticklabels(yticklabels, fontsize=20)
     else:
         ax.set_ylim(-10, 40)
         yticklabels = ax.get_yticklabels()
-        ax.set_yticklabels(yticklabels, fontsize=15)
+        ax.set_yticklabels(yticklabels, fontsize=20)
 
     # 10. 범례 수동 생성
     # from matplotlib.patches import Patch
@@ -258,9 +259,9 @@ def draw_boxplot_MARL(problem_size="10-5", save=False):
         "RL+RL (comm.)": "RL+RL",
         "CTCE": "CTCE",
         "DTDE (comm.)": "DTDE",
-        "DTDE with pt (comm.)": "DTDE with pt",
-        "CTDE with CL (comm.)": "CTDE with CL",
-        "CTDE with EP (comm.)": "CTDE with EP"
+        "DTDE with pt (comm.)": "Pre-trained\nDTDE",
+        "CTDE with CL (comm.)": "CTDE\nwith CL",
+        "CTDE with EP (comm.)": "CTDE\nwith EP"
     }
 
     colors = {
@@ -270,9 +271,9 @@ def draw_boxplot_MARL(problem_size="10-5", save=False):
         "RL+RL": "#5DC863",  # Soft Green
         "CTCE": "#FDE725",  # Golden Yellow
         "DTDE": "#F9844A",  # Warm Orange
-        "DTDE with pt": "#D43E4F",  # Coral Red
-        "CTDE with CL": "#728EA3",  # Slate Blue
-        "CTDE with EP": "#A6AD00",  # Olive Green
+        "Pre-trained\nDTDE": "#D43E4F",  # Coral Red
+        "CTDE\nwith CL": "#728EA3",  # Slate Blue
+        "CTDE\nwith EP": "#A6AD00",  # Olive Green
     }
 
     # 3. 데이터, 라벨, 색상 수집
@@ -344,16 +345,16 @@ def draw_boxplot_MARL(problem_size="10-5", save=False):
     for boundary in group_boundaries:
         ax.axvline(x=boundary, color='gray', linestyle='--', alpha=0.7)
 
-    ax.set_xlabel("Algorithms", fontsize=20)
+    # ax.set_xlabel("Algorithms", fontsize=20)
     ax.set_ylabel("Performance Measure ($\sigma$)", fontsize=20)
     # ax.set_title(problem_size, fontsize=25)
 
     ax.set_xticks(positions)
-    ax.set_xticklabels(labels, rotation=45, ha='center', fontsize=15)
+    ax.set_xticklabels(labels, rotation=45, ha='center', fontsize=20)
 
     ax.set_ylim(-10, 40)
     yticklabels = ax.get_yticklabels()
-    ax.set_yticklabels(yticklabels, fontsize=15)
+    ax.set_yticklabels(yticklabels, fontsize=20)
 
     ax.grid(True, linestyle='--', alpha=0.5)
     plt.tight_layout()
@@ -369,12 +370,12 @@ def draw_boxplot_MARL(problem_size="10-5", save=False):
 
 def draw_bar_plot(problem_size="10-5", tag="FJSP", save=False):
     title = {
-        "10-5": "(a) 10-5",
-        "15-5": "(b) 15-5",
-        "15-10": "(c) 15-10",
-        "20-10": "(d) 20-10",
-        "20-15": "(e) 20-15",
-        "25-15": "(f) 25-15"
+        "10-5": "(a) 5X10",
+        "15-5": "(b) 5X15",
+        "15-10": "(c) 10X15",
+        "20-10": "(d) 10X20",
+        "20-15": "(e) 15X20",
+        "25-15": "(f) 15X25"
     }
 
     df = pd.read_excel('../output/test/results_scaled_by_rand+rand.xlsx',
@@ -416,7 +417,7 @@ def draw_bar_plot(problem_size="10-5", tag="FJSP", save=False):
     x = np.arange(len(columns))
 
     # 그래프
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(6, 5))
     bars = ax.bar(x, data, color=[colors.get(col, "#333333") for col in columns], edgecolor='black')
 
     # 레이블 표시
@@ -433,22 +434,22 @@ def draw_bar_plot(problem_size="10-5", tag="FJSP", save=False):
 
     # 축 설정
     ax.set_title(title[problem_size], fontsize=25)
-    ax.set_xlabel("Algorithms", fontsize=20)
+    # ax.set_xlabel("Algorithms", fontsize=20)
     ax.set_ylabel("Performance Measure ($\sigma$)", fontsize=20)
 
     ax.set_xticks(x)
-    ax.set_xticklabels(columns, fontsize=15)
+    ax.set_xticklabels(columns, fontsize=20)
 
     if tag == "FJSP":
         ax.set_ylim(0, 25)
         yticklabels = ax.get_yticklabels()
-        ax.set_yticklabels(yticklabels, fontsize=15)
+        ax.set_yticklabels(yticklabels, fontsize=20)
     else:
         ax.set_ylim(0, 25)
         yticklabels = ax.get_yticklabels()
-        ax.set_yticklabels(yticklabels, fontsize=15)
+        ax.set_yticklabels(yticklabels, fontsize=20)
 
-    ax.tick_params(axis='y', labelsize=15)
+    ax.tick_params(axis='y', labelsize=20)
     ax.grid(True, linestyle='--', axis='y', alpha=0.5)
 
     plt.tight_layout()
@@ -465,12 +466,12 @@ def draw_bar_plot(problem_size="10-5", tag="FJSP", save=False):
 
 def draw_pie_chart(problem_size="10-5", save=False):
     title = {
-        "10-5": "(a) 10-5",
-        "15-5": "(b) 15-5",
-        "15-10": "(c) 15-10",
-        "20-10": "(d) 20-10",
-        "20-15": "(e) 20-15",
-        "25-15": "(f) 25-15"
+        "10-5": "(a) 5X10",
+        "15-5": "(b) 5X15",
+        "15-10": "(c) 10X15",
+        "20-10": "(d) 10X20",
+        "20-15": "(e) 15X20",
+        "25-15": "(f) 15X25"
     }
 
     # 1. 데이터 불러오기
@@ -488,7 +489,7 @@ def draw_pie_chart(problem_size="10-5", save=False):
         "RL+RL (comm.)": "RL+RL",
         "CTCE": "CTCE",
         "DTDE (comm.)": "DTDE",
-        "DTDE with pt (comm.)": "DTDE with pt",
+        "DTDE with pt (comm.)": "Pre-trained DTDE",
         "CTDE with CL (comm.)": "CTDE with CL",
         "CTDE with EP (comm.)": "CTDE with EP"
     }
@@ -500,7 +501,7 @@ def draw_pie_chart(problem_size="10-5", save=False):
         "RL+RL": "#5DC863",  # Soft Green
         "CTCE": "#FDE725",  # Golden Yellow
         "DTDE": "#F9844A",  # Warm Orange
-        "DTDE with pt": "#D43E4F",  # Coral Red
+        "Pre-trained DTDE": "#D43E4F",  # Coral Red
         "CTDE with CL": "#728EA3",  # Slate Blue
         "CTDE with EP": "#A6AD00",  # Olive Green
     }
@@ -518,8 +519,8 @@ def draw_pie_chart(problem_size="10-5", save=False):
         chart_colors.append(colors[mapped_name])
 
     # 3. Pie chart 그리기
-    fig_width = 12
-    fig_height = 8
+    fig_width = 7
+    fig_height = 5
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
     max_idx = max(mapped_counts.values())
@@ -533,15 +534,25 @@ def draw_pie_chart(problem_size="10-5", save=False):
 
     explode = [0.02 if i == max_index else 0 for i in range(len(mapped_counts))]
 
+    def func_autopct(pct):
+        # 원하는 최소 비율 설정 (예: 5.0% 미만은 텍스트 숨기기)
+        min_pct_threshold = 3.0
+
+        if pct > min_pct_threshold:
+            return f'{pct:.1f}%'  # 5% 이상이면 포맷된 문자열 반환
+        else:
+            return ''  # 5% 미만이면 빈 문자열 반환 (텍스트 숨김)
+
     wedges, texts, autotexts = ax.pie(
         mapped_counts.values(),
         colors=chart_colors,
-        autopct='%1.1f%%',
+        autopct=func_autopct,
         startangle=90,
         counterclock=False,
         explode=explode,
+        pctdistance=0.7,
         wedgeprops={'edgecolor': 'white', 'linewidth': 1},
-        textprops={'fontsize': 15, 'color': 'black'}
+        textprops={'fontsize': 20, 'color': 'black'}
     )
 
     wedges[max_index].set_edgecolor(highlight_color)
@@ -556,7 +567,7 @@ def draw_pie_chart(problem_size="10-5", save=False):
         ])
 
     # 제목 스타일
-    ax.set_title(title[problem_size], fontsize=35)
+    ax.set_title(title[problem_size], fontsize=25)
 
     # 범례 위치 및 디자인
     used_algorithms = set(mapped_counts.keys())
@@ -582,7 +593,7 @@ def draw_pie_chart(problem_size="10-5", save=False):
         loc='center left',
         bbox_to_anchor=(0.9, 0.5),
         frameon=False,
-        fontsize=20
+        fontsize=15
     )
 
     # 원형 유지 및 여백 조정
@@ -624,7 +635,16 @@ def draw_paired_bar_plot(save=False):
     fig, ax = plt.subplots(figsize=(12, 8))
 
     # 알고리즘 이름에서 " (comm.)" 제거한 버전 (x축 레이블용)
-    clean_algorithm_names = [name.replace(" (comm.)", "") for name in algorithms_comm]
+    mapping = {
+        "RL+RL (comm.)": "RL+RL",
+        "DTDE (comm.)": "DTDE",
+        "DTDE with pt (comm.)": "Pre-trained DTDE",
+        "CTDE with CL (comm.)": "CTDE with CL",
+        "CTDE with EP (comm.)": "CTDE with EP"
+    }
+
+    clean_algorithm_names = [mapping[name] for name in algorithms_comm]
+    # clean_algorithm_names = [name.replace(" (comm.)", "") for name in algorithms_comm]
 
     # 막대 위치 설정
     x = np.arange(len(clean_algorithm_names))
@@ -654,21 +674,21 @@ def draw_paired_bar_plot(save=False):
     add_value_labels(bars2, df_comm.values)
 
     # 그래프 꾸미기
-    ax.set_xlabel("Algorithms", fontsize=20)
+    # ax.set_xlabel("Algorithms", fontsize=20)
     ax.set_ylabel("Performance Measure ($\sigma$)", fontsize=20)
 
     ax.set_xticks(x)
-    ax.set_xticklabels(clean_algorithm_names, ha='center', fontsize=15)
+    ax.set_xticklabels(clean_algorithm_names, ha='center', fontsize=20)
 
     ax.set_ylim(0, 35)
     yticklabels = ax.get_yticklabels()
-    ax.set_yticklabels(yticklabels, fontsize=15)
+    ax.set_yticklabels(yticklabels, fontsize=20)
 
     # 범례
     ax.legend(
         loc='upper right',
         frameon=False,
-        fontsize=12
+        fontsize=15
     )
 
     # 격자 표시
@@ -708,7 +728,7 @@ def draw_line_graph(save=False):
         "RL+RL (comm.)": "RL+RL",
         "CTCE": "CTCE",
         "DTDE (comm.)": "DTDE",
-        "DTDE with pt (comm.)": "DTDE with pt",
+        "DTDE with pt (comm.)": "Pre-trained DTDE",
         "CTDE with CL (comm.)": "CTDE with CL",
         "CTDE with EP (comm.)": "CTDE with EP"
     }
@@ -720,7 +740,7 @@ def draw_line_graph(save=False):
         "RL+RL": "#5DC863",  # Soft Green
         "CTCE": "#FDE725",  # Golden Yellow
         "DTDE": "#F9844A",  # Warm Orange
-        "DTDE with pt": "#D43E4F",  # Coral Red
+        "Pre-trained DTDE": "#D43E4F",  # Coral Red
         "CTDE with CL": "#728EA3",  # Slate Blue
         "CTDE with EP": "#A6AD00",  # Olive Green
     }
@@ -745,13 +765,13 @@ def draw_line_graph(save=False):
     # x축 라벨 설정 (45부터 130까지 5단위로 동일 간격 표시)
     desired_ticks = list(range(40, 136, 5))  # 45, 50, 55, ..., 130
     ax.set_xticks(desired_ticks)
-    ax.set_xticklabels(desired_ticks, fontsize=15)
+    ax.set_xticklabels(desired_ticks, fontsize=20)
     ax.set_xlim(40, 135)
 
     # y축
     ax.set_ylim(0, 25)
     yticklabels = ax.get_yticklabels()
-    ax.set_yticklabels(yticklabels, fontsize=15)
+    ax.set_yticklabels(yticklabels, fontsize=20)
 
     # 축 라벨 및 제목 설정
     ax.set_xlabel('Number of Operations', fontsize=20)
@@ -764,7 +784,7 @@ def draw_line_graph(save=False):
               frameon=False,
               fontsize=15)
 
-    # 격자 추가
+    # 격자 추가-
     ax.grid(True, linestyle='--', alpha=0.7)
 
     # 레이아웃 조정
