@@ -14,8 +14,10 @@ plt.rcParams['font.family'] = 'Times New Roman'
 
 def draw_scatter_plot(save=False):
     problem_sizes = ["10-5", "15-5", "15-10", "20-10", "20-15", "25-15"]
-    algorithms = ["SPT+SETT", "RL+SETT", "MWKR+RL (comm.)", "RL+RL (comm.)", "CTCE",
-                  "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
+    # algorithms = ["SPT+SETT", "RL+SETT", "MWKR+RL (comm.)", "RL+RL (comm.)", "CTCE",
+    #               "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
+    algorithms = ["DTDE with pt (comm.)", "DTDE (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)", "CTCE",
+                  "RL+RL (comm.)", "RL+SETT", "MWKR+RL (comm.)", "MWKR+SETT"]
 
     df_avg = pd.DataFrame(index=problem_sizes, columns=algorithms)
     for i, size in enumerate(problem_sizes):
@@ -25,37 +27,37 @@ def draw_scatter_plot(save=False):
         df_avg.iloc[i] = df_selected.mean()
 
     mapping = {
-        "SPT+SETT": "SPT+SETT",
+        "MWKR+SETT": "MWKR+SETT",
         "RL+SETT": "RL+SETT",
         "MWKR+RL (comm.)": "MWKR+RL",
         "RL+RL (comm.)": "RL+RL",
         "CTCE": "CTCE",
         "DTDE (comm.)": "DTDE",
-        "DTDE with pt (comm.)": "Pre-trained DTDE",
+        "DTDE with pt (comm.)": "DIA-DTDE",
         "CTDE with CL (comm.)": "CTDE with CL",
         "CTDE with EP (comm.)": "CTDE with EP"
     }
 
     colors = {
-        "SPT+SETT": "#440154",  # Deep Purple
+        "MWKR+SETT": "#440154",  # Deep Purple
         "RL+SETT": "#3B528B",  # Indigo Blue
         "MWKR+RL": "#21908C",  # Teal Green
         "RL+RL": "#5DC863",  # Soft Green
         "CTCE": "#FDE725",  # Golden Yellow
         "DTDE": "#F9844A",  # Warm Orange
-        "Pre-trained DTDE": "#D43E4F",  # Coral Red
+        "DIA-DTDE": "#D43E4F",  # Coral Red
         "CTDE with CL": "#728EA3",  # Slate Blue
         "CTDE with EP": "#A6AD00",  # Olive Green
     }
 
     markers = {
-        'SPT+SETT': 'x',
+        'MWKR+SETT': 'x',
         "RL+SETT": '^',
         "MWKR+RL": 'v',
         "RL+RL": 's',
         'CTCE': 'd',
         'DTDE': 'o',
-        'Pre-trained DTDE': '*',
+        'DIA-DTDE': '*',
         "CTDE with CL": 'p',
         "CTDE with EP": 'h'
     }
@@ -246,10 +248,15 @@ def draw_boxplot_MARL(problem_size="10-5", save=False):
                        sheet_name=problem_size, engine="openpyxl", index_col=0).iloc[:-1]
 
     # 2. 열 정의
+    # groups = [
+    #     ["SPT+SETT"],
+    #     ["RL+SETT", "MWKR+RL (comm.)", "RL+RL (comm.)"],
+    #     ["CTCE", "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
+    # ]
     groups = [
         ["SPT+SETT"],
         ["RL+SETT", "MWKR+RL (comm.)", "RL+RL (comm.)"],
-        ["CTCE", "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
+        ["DTDE with pt (comm.)", "DTDE (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)", "CTCE"]
     ]
 
     mapping = {
@@ -259,7 +266,7 @@ def draw_boxplot_MARL(problem_size="10-5", save=False):
         "RL+RL (comm.)": "RL+RL",
         "CTCE": "CTCE",
         "DTDE (comm.)": "DTDE",
-        "DTDE with pt (comm.)": "Pre-trained\nDTDE",
+        "DTDE with pt (comm.)": "DIA-DTDE",
         "CTDE with CL (comm.)": "CTDE\nwith CL",
         "CTDE with EP (comm.)": "CTDE\nwith EP"
     }
@@ -271,7 +278,7 @@ def draw_boxplot_MARL(problem_size="10-5", save=False):
         "RL+RL": "#5DC863",  # Soft Green
         "CTCE": "#FDE725",  # Golden Yellow
         "DTDE": "#F9844A",  # Warm Orange
-        "Pre-trained\nDTDE": "#D43E4F",  # Coral Red
+        "DIA-DTDE": "#D43E4F",  # Coral Red
         "CTDE\nwith CL": "#728EA3",  # Slate Blue
         "CTDE\nwith EP": "#A6AD00",  # Olive Green
     }
@@ -478,30 +485,32 @@ def draw_pie_chart(problem_size="10-5", save=False):
     df = pd.read_excel('../output/test/results_scaled_by_rand+rand.xlsx',
                        sheet_name=problem_size, engine="openpyxl", index_col=0).iloc[:-1]
 
-    algorithms = ["SPT+SETT", "RL+SETT", "MWKR+RL (comm.)", "RL+RL (comm.)", "CTCE",
-                  "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
+    # algorithms = ["SPT+SETT", "RL+SETT", "MWKR+RL (comm.)", "RL+RL (comm.)", "CTCE",
+    #               "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
+    algorithms = ["DTDE with pt (comm.)", "DTDE (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)", "CTCE",
+                  "RL+RL (comm.)", "RL+SETT", "MWKR+RL (comm.)", "MWKR+SETT"]
     df_selected = df[algorithms]
 
     mapping = {
-        "SPT+SETT": "SPT+SETT",
+        "MWKR+SETT": "MWKR+SETT",
         "RL+SETT": "RL+SETT",
         "MWKR+RL (comm.)": "MWKR+RL",
         "RL+RL (comm.)": "RL+RL",
         "CTCE": "CTCE",
         "DTDE (comm.)": "DTDE",
-        "DTDE with pt (comm.)": "Pre-trained DTDE",
+        "DTDE with pt (comm.)": "DIA-DTDE",
         "CTDE with CL (comm.)": "CTDE with CL",
         "CTDE with EP (comm.)": "CTDE with EP"
     }
 
     colors = {
-        "SPT+SETT": "#440154",  # Deep Purple
+        "MWKR+SETT": "#440154",  # Deep Purple
         "RL+SETT": "#3B528B",  # Indigo Blue
         "MWKR+RL": "#21908C",  # Teal Green
         "RL+RL": "#5DC863",  # Soft Green
         "CTCE": "#FDE725",  # Golden Yellow
         "DTDE": "#F9844A",  # Warm Orange
-        "Pre-trained DTDE": "#D43E4F",  # Coral Red
+        "DIA-DTDE": "#D43E4F",  # Coral Red
         "CTDE with CL": "#728EA3",  # Slate Blue
         "CTDE with EP": "#A6AD00",  # Olive Green
     }
@@ -611,8 +620,10 @@ def draw_pie_chart(problem_size="10-5", save=False):
 
 def draw_paired_bar_plot(save=False):
     problem_sizes = ["10-5", "15-5", "15-10", "20-10", "20-15", "25-15"]
-    algorithms_comm = ["RL+RL (comm.)", "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
-    algorithms_wo_comm = ["RL+RL", "DTDE", "DTDE with pt", "CTDE with CL", "CTDE with EP"]
+    # algorithms_comm = ["RL+RL (comm.)", "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
+    # algorithms_wo_comm = ["RL+RL", "DTDE", "DTDE with pt", "CTDE with CL", "CTDE with EP"]
+    algorithms_comm = ["DTDE with pt (comm.)", "DTDE (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)", "RL+RL (comm.)"]
+    algorithms_wo_comm = ["DTDE with pt", "DTDE", "CTDE with CL", "CTDE with EP", "RL+RL"]
 
     df_avg = pd.DataFrame(index=problem_sizes, columns=algorithms_comm + algorithms_wo_comm)
     for i, size in enumerate(problem_sizes):
@@ -628,7 +639,7 @@ def draw_paired_bar_plot(save=False):
     # 색상 팔레트
     colors = {
         "comm": '#E74C3C',  # 빨강 계열
-        "wo_comm": '#27AE60'  # 초록 계열
+        "wo_comm": '#696969'  # 초록 계열
     }
 
     # 그래프 생성
@@ -638,7 +649,7 @@ def draw_paired_bar_plot(save=False):
     mapping = {
         "RL+RL (comm.)": "RL+RL",
         "DTDE (comm.)": "DTDE",
-        "DTDE with pt (comm.)": "Pre-trained DTDE",
+        "DTDE with pt (comm.)": "DIA-DTDE",
         "CTDE with CL (comm.)": "CTDE with CL",
         "CTDE with EP (comm.)": "CTDE with EP"
     }
@@ -708,8 +719,10 @@ def draw_paired_bar_plot(save=False):
 
 def draw_line_graph(save=False):
     problem_sizes = ["10-5", "15-5", "15-10", "20-10", "20-15", "25-15"]
-    algorithms = ["SPT+SETT", "RL+SETT", "MWKR+RL (comm.)", "RL+RL (comm.)", "CTCE",
-                  "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
+    # algorithms = ["SPT+SETT", "RL+SETT", "MWKR+RL (comm.)", "RL+RL (comm.)", "CTCE",
+    #               "DTDE (comm.)", "DTDE with pt (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)"]
+    algorithms = ["DTDE with pt (comm.)", "DTDE (comm.)", "CTDE with CL (comm.)", "CTDE with EP (comm.)", "CTCE",
+                  "RL+RL (comm.)", "RL+SETT", "MWKR+RL (comm.)", "MWKR+SETT"]
 
     df_list = []
     for i, size in enumerate(problem_sizes):
@@ -722,25 +735,25 @@ def draw_line_graph(save=False):
     df_group = df_total.groupby(by="num_operations").mean()
 
     mapping = {
-        "SPT+SETT": "SPT+SETT",
+        "MWKR+SETT": "MWKR+SETT",
         "RL+SETT": "RL+SETT",
         "MWKR+RL (comm.)": "MWKR+RL",
         "RL+RL (comm.)": "RL+RL",
         "CTCE": "CTCE",
         "DTDE (comm.)": "DTDE",
-        "DTDE with pt (comm.)": "Pre-trained DTDE",
+        "DTDE with pt (comm.)": "DIA-DTDE",
         "CTDE with CL (comm.)": "CTDE with CL",
         "CTDE with EP (comm.)": "CTDE with EP"
     }
 
     colors = {
-        "SPT+SETT": "#440154",  # Deep Purple
+        "MWKR+SETT": "#440154",  # Deep Purple
         "RL+SETT": "#3B528B",  # Indigo Blue
         "MWKR+RL": "#21908C",  # Teal Green
         "RL+RL": "#5DC863",  # Soft Green
         "CTCE": "#FDE725",  # Golden Yellow
         "DTDE": "#F9844A",  # Warm Orange
-        "Pre-trained DTDE": "#D43E4F",  # Coral Red
+        "DIA-DTDE": "#D43E4F",  # Coral Red
         "CTDE with CL": "#728EA3",  # Slate Blue
         "CTDE with EP": "#A6AD00",  # Olive Green
     }
@@ -783,6 +796,11 @@ def draw_line_graph(save=False):
               ncol=5,  # 범례 항목을 가로로 배열할 때 열 수 지정 (선택)
               frameon=False,
               fontsize=15)
+
+    # ax.legend(loc='upper left',  # 위치를 '왼쪽 상단'으로 변경
+    #           ncol=5,  # 열 개수를 2개로 조절 (1도 가능)
+    #           frameon=False,
+    #           fontsize=15)
 
     # 격자 추가-
     ax.grid(True, linestyle='--', alpha=0.7)
