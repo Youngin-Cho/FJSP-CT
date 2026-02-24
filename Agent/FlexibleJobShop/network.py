@@ -58,7 +58,8 @@ class FJSPScheduler(nn.Module):
             mask=None,
             current_operations=None,
             reorder_idx=None,
-            greedy=False):
+            greedy=False,
+            return_probs=False):
 
         x_dict, edge_index_dict = graph_feature.x_dict, graph_feature.edge_index_dict
 
@@ -123,9 +124,15 @@ class FJSPScheduler(nn.Module):
                     state_value = self.critic[i](h_pooled)
 
         if self.use_local_critic:
-            return action.item(), action_logprob.item(), state_value.squeeze().item()
+            if return_probs:
+                return action.item(), action_logprob.item(), state_value.squeeze().item(), probs
+            else:
+                return action.item(), action_logprob.item(), state_value.squeeze().item()
         else:
-            return action.item(), action_logprob.item()
+            if return_probs:
+                return action.item(), action_logprob.item(), probs
+            else:
+                return action.item(), action_logprob.item()
 
     def evaluate(self,
                  batch_graph_feature=None,
